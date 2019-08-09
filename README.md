@@ -9,9 +9,7 @@ There are currently three mailchimp-sync extensions
 2. <https://civicrm.org/extensions/mailchimp-sync> not updated since 2014. Uses deprecated Mailchimp API.
 3. <https://civicrm.org/extensions/civimailchimp> not updated since 2015. Uses deprecated Mailchimp API.
 
-2, 3 are dead as I understand as they use an out of date Mailchimp API. 1 works but it struggles with big lists and it struggles with build updates.
-
-I'm proposing a new Mailchimp sync based on my experience of writing/using (1), and possibly with a couple of ideas used by (3).
+2, 3 are dead as I understand as they use an out of date Mailchimp API. 1 works but it struggles with big lists and what to do when data is changed at both ends between syncs. I'm proposing a new Mailchimp sync based on my experience of writing/using (1), and possibly with a couple of ideas used by (3).
 
 ## Benefits
 
