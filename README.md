@@ -1,4 +1,5 @@
 # mailchimpsync
+
 CiviCRM Extension providing Mailchimp Sync
 
 Oh no! We're here again!
@@ -41,7 +42,7 @@ There are currently three mailchimp-sync extensions
 
 9. The sync will never un-delete a contact.
 
-10.When first adding a contact to Mailchimp, it will choose a non-on-hold Bulk email, then a non-on-hold Primary email. This seemed like a good idea taken from one of the other extensions, since it allows storing email addresses that will never be given to Mailchimp. Note that subsequent changes to an email's metadata have no effect, though.
+10. When first adding a contact to Mailchimp, it will choose a non-on-hold Bulk email, then a non-on-hold Primary email. This seemed like a good idea taken from one of the other extensions, since it allows storing email addresses that will never be given to Mailchimp. Note that subsequent changes to an email's metadata have no effect, though.
 
 11. We only look at group membership. We ignore the following list of things:
 
@@ -74,7 +75,9 @@ There are currently three mailchimp-sync extensions
 
 ## Subscription sync
 
-CiviCRM *maintains* a copy of mailchimp data.
+CiviCRM *maintains* a copy of mailchimp data, per audience.
+
+* Mailchimp: audience (ID string)
 
 * Mailchimp: member hash
 
@@ -94,7 +97,7 @@ CiviCRM *maintains* a copy of mailchimp data.
 
 * CiviCRM data object (to be mapped to mailchimp in data sync)
 
-* CiviCRM data hash 
+* CiviCRM data hash
 
 
 ### Membership Sync Algorithm
@@ -195,8 +198,103 @@ v1: This allows updating CiviCRM immediately-ish (webhooks don't fire in real ti
 
 I'm undecided about the role of webhooks. They can be troublesome but have their uses.
 
+## If you can, don't use Mailchimp!
+
+In working with the API and the documentation over the last 8 years or so I've found several bugs, reported them, had them acknowledged with a promise of passing it on, yet nothing happens. They've also changed things without publishing the changes. Mailchimp's [API Reference](https://developer.mailchimp.com/documentation/mailchimp/reference/overview/) does not give a complete picture of the service. All this makes integration extensions brittle.
+
+Another issue is that there is no sandbox development environment; everything must be done with real email addresses and real paid-for services. This has several risks and pitfalls: accidents can be costly and testing email addresses can trigger security alerts ("foo@example.com" has subscirbed too much recently, request denied). Data cannot be properly deleted; if you delete an email address it is *stored* as deleted for the purposes of remembering to never use it again. This means you need an infinite source of dummy addresses for testing.
+
+Seems the customers have not found a way to apply enough pressure collectively to improve their product. Humph.
+
+All this is a good reason to persuade people not to use Mailchimp at all if feasible. CiviCRM + Mosaico gives a descent experience for 80% of use cases and gives you more segmentation flexibility and usually much lower cost.
+
+## Understanding Mailchimp's data structures, intended use, API
+
+Mailchimp seem to be strongly pushing the idea of one "Audience" (previously "List") for all subscribers and then segmenting according to various data for sending email "Campaigns". The UI (September 2019) refers to singluar "Audience" and will even hide the audience selector unless you have already created several. On a free account you're only allowed a single Audience.
+
+> If you can, it's best to have one audience that you organize with tags, groups, or segments, rather than maintain multiple audiences in your account. Mailchimp treats all the audiences in your account separately, and billing is based on the total number of subscribed contacts across all your audiences. If you have duplicate contacts across audiences, having one audience could save you money. One audience is also easier to manage and keep clean.
+>
+> [Source: Mailchimp: Best practices](https://mailchimp.com/help/requirements-best-practices-audiences/)
+
+The extension should support multiple audiences but users should keep in mind it's not "the mailchimp way", so should probably not use it like that.
+
+Annoyingly, of course, this means that the unsubscribe link covers all purposes. e.g. if you have one audience and within it you have 'major donors' and 'daily newsletter' segments, a major donor who thinks they're unsubscribing from the daily newsletter removes themselves from the important major donors segment, too. Mailchimp provide their own forms for "updating preferences" but who among us, when faced with wanting to unsubscribe, fancies interacting with an unknown and probably awkward profile update form when there's an unsubscribe link right next to it?
+
+Audience members are categorised as follows ([source Sep 2019](https://mailchimp.com/help/getting-started-audience/)):
+
+> - **Subscribed contact** Someone who has opted in to receive your email marketing campaigns.
+> - **Unsubscribed contact** Someone who was opted in to receive your email marketing campaigns, but isn't currently.
+> - **Non-subscribed contact** Someone who has interacted with your online store, but hasn't opted in to receive your email marketing campaigns.
+
+The API, however, returns one of these statuses
+
+* **subscribed**
+* **unsubscribed** 
+   - if done by the member via a Mailchimp unsubscribe link you can't resubscribe them via API (but you can set "pending").
+   - if done via the API, or the UI, you can resubscribe them. Mailchimp does not send a confirmation email or unsubscribe notice.
+* **cleaned** (removed by Mailchimp due to bounces)
+* **pending** - Mailchimp will send an email to them requiring them to confirm subscription.
+* **transactional** ?? no reference to this in the API or other documenation, perhaps it means "non-subscribed contact"
+* **archived** [documentation](https://mailchimp.com/help/archive-unarchive-contacts/). An archived contact is not billed-for and you can't interact with their data in any way except to un-archive them. If they were to resubscribe using a Mailchimp form they become un-archived. In the UI un-archiving restores the original status, but in the API there does not seem to be the equivalent method - you have to choose one of these.
+
+## How to 'unsusbscribe'
+
+If someone leaves the group in CiviCRM that syncs with an audience's membership, we have several options:
+
+- delete the member. No! This makes it impossible for us to resubscribe them via the API at all.
+- unsubscribe the member. This is reversible via API.
+- archive the member. This is reversible.
+
+What's the difference between unsubscribe and archive? Neither is billed. Unsubscribed represents the intent of the person better an archived contact that is un-archived (via UI) would become subscribed again. So it still looks sensible to use unsubscribe.
+
+If the person uses a Mailchimp unsubscribe link, we need to remove the contact from our CiviCRM group. Note that we won't be able to resubscribe them directly from the API - the first call will fail and we need to detect this and try again with 'pending'. **Q. is there a way to detect before the fail?** (would solve issue of not getting feedback from bulk updates)
+
+## Segmentation
+
+Because of the focus on a single audience we need to handle not just the complete unsubscribe-from-everything situation, but also the "update preferences". This means we need a 2 way sync on something other than list membership.
+
+Previous extensions have used Mailchimp's **Interest Groupings** for this (ambiguously called "Groups" in mailchimp). Mailchimp allows groupings of groups (Drupal users: think vocabularies of terms) that are binary yes-or-no for a contact. **This seems pretty sensible still.**
+
+Since them Mailchimp has introduced **Tags**, but these are for "internal use" ([source](https://mailchimp.com/help/getting-started-tags/)); they're not editable by contacts themselves using Mailchimp preference forms. Therefore these do not seem like a sensible way to do most segmentation whereby people can 'unsubscribe' from a segment without unsubscribing from whole audience.
+
+Previous extensions used CiviCRM groups mapped to interest groups for this. An
+alternative is CiviCRM Tags. e.g. mirror Mailchimp's interests with tags (could
+even be automated). But tags have no metadata and no history, so groups will
+still be needed, especially for determining which source has most recently been
+updated.
+
+We ought to look at the group subscription history date in CiviCRM on a per
+group basis and compare it against the lastest update date for the Mailchimp
+contact.
+
+There is still the case where:
+
+1. Contact is in sync and is in subscription group (is subscribed in audience);
+   and is in interest group A but not B.
+
+2. Staff member adds them to group B in CiviCRM.
+
+3. Contact updates via mailchimp UI interests, removing themself from group A.
+   They do this before a sync has happened.
+
+4. Mailchimp only gives us a last updated date for the contact, not per group.
+   As here Mailchimp's last update will be later than our group updates, it will
+   win and we will lose data.
+
+   - Group A: Mailchimp's data wins: remove from CiviCRM group. This is fine.
+
+   - Group B: Mailchimp's data wins: remove them from CiviCRM group!
+
+(Note this can be avoided if 2, 3 are swapped in time.)
+
+This can be minimised but not completely mitigated by frequent syncs. I think
+this reduces the chance of it happening to 'not at all likely' but users would
+need to understand the risk for their particular use.
+
+
 ## Comments - please use issue queue
 
 
 I'd love to hear your thoughts.
+
 
