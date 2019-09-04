@@ -291,6 +291,34 @@ This can be minimised but not completely mitigated by frequent syncs. I think
 this reduces the chance of it happening to 'not at all likely' but users would
 need to understand the risk for their particular use.
 
+## Smart and Hierarchical groups
+
+Smart groups are not allowed to be used for subscriptions or interests because
+there's no subscription history records for them, and we need to know when the
+contact was added/removed from a group.
+
+CiviCRM allows hierarchical groups. In summary the logic is "a contact is in a
+group if it is included in any child (or grand child etc.) group".
+
+At first I thought this would be a logical configuration for addressing interest
+groups within a subscription group (audience).
+
+However the way this is implemented opens up a lot of confusion. The sentence
+stating the logic above is true for searches, but apparently not true if you
+inspect a single contact's record - the parent group(s) are not listed, even if
+you look under Smart Groups. It's also confusing because if you Remove your
+contact from the parent group (by manually *adding* then *removing* them),
+they're still considered to be in the group if they are in a child group; the
+only way to remove someone from a parent group is to remove from all child
+groups.
+
+This is way too complex to use sensibly (consider case that a contact is
+'Removed' in CiviCRM from main subscription group but is still Added to a child
+group. The sync would see subscription history for the removal, but would have
+to know to ignore that by doing a search on child groups).
+
+Therefore this extension requires that subscription/interest groups are not
+hierarchical.
 
 ## Comments - please use issue queue
 
