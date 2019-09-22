@@ -1,4 +1,4 @@
-# mailchimpsync
+# Mailchimp Sync (in development, not ready!)
 
 CiviCRM Extension providing Mailchimp Sync
 
