@@ -79,20 +79,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   /**
    * Check we have our special table that helps us with sync.
    */
-  public function testFetchMailchimpData() {
+  public function testMergeMailchimpData() {
 
     // Create simple config.
-    CRM_Mailchimpsync::setConfig([
-      'lists' => [
-        'list_1' => [
-          'apiKey' => 'mock_account_1',
-          'subscriptionGroup' => NULL,
-        ],
-      ]
-    ]);
-
-    // Load the audience
-    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+    $audience = $this->createConfigFixture1AndGetAudience();
 
     // Get the audience's API so we can provide fixture data.
     $api = $audience->getMailchimpApi();
@@ -125,6 +115,146 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
   }
 
+  public function testDeletedContactsDetected() {
+    // Create two contacts.
+    $contact_1 = civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1'])['id'];
+    $contact_2 = civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2'])['id'];
+
+    // Create records.
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, civicrm_contact_id, mailchimp_email)
+            VALUES(%1, 'list_1', %2, %3)";
+
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
+      2 => [$contact_1, 'Integer'],
+      3 => ['contact1@example.com', 'String'],
+    ]);
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'String'],
+      2 => [$contact_2, 'Integer'],
+      3 => ['contact2@example.com', 'String'],
+    ]);
+
+    // Delete contact 2
+    civicrm_api3('Contact', 'delete', ['id' => $contact_2]);
+
+    // Create simple config.
+    $audience = $this->createConfigFixture1AndGetAudience();
+
+    $affected = $audience->removeInvalidContactIds();
+    $this->assertEquals(1, $affected, "Expected removeInvalidContactIds to remove one deleted contact.");
+
+    // Fully delete contact 1
+    civicrm_api3('Contact', 'delete', ['id' => $contact_1, 'skip_undelete'=>1]);
+    $affected = $audience->removeInvalidContactIds();
+    $this->assertEquals(0, $affected, "Expected removeInvalidContactIds to remove one fully deleted contact.");
+  }
+  public function testContactsMatchedByEmail() {
+    $default_stats = [
+      'found_by_single_email'                           => 0,
+      'used_first_undeleted_contact_in_group'           => 0,
+      'used_first_undeleted_contact_with_group_history' => 0,
+      'used_first_undeleted_contact'                    => 0,
+      'remaining'                                       => 0,
+    ];
+
+    // Create contact.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+
+    // Create records without contact id.
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email)
+            VALUES(%1, 'list_1', %2)";
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
+      2 => ['contact1@example.com', 'String'],
+    ]);
+
+    // Create simple config.
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+
+    // Populate - should find our contact.
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals(['found_by_single_email' => 1] + $default_stats,
+      $stats, "Failed to populate contact from email (test 1)");
+    // Check it found the right contact.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact1@example.com';
+    $this->assertEquals(1, $bao->find(1), "Failed to find contact1 (test 1)");
+    $this->assertEquals($contact_1, $bao->civicrm_contact_id, "Failed to populate contact_id (test 1)");
+
+
+    //
+    // Now reset the cache, add a 2nd duplicate email to the same contact and retry.
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
+    // This doesn't work: $bao->civicrm_contact_id = NULL; $bao->save();
+    $email2 = civicrm_api3('Email', 'create', ['email' => 'contact1@example.com', 'contact_id' => $contact_1]);
+    // Populate - should still find our contact.
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals([
+      'found_by_single_email' => 1,
+      ] + $default_stats
+      , $stats, "Failed to populate contact from email (test 2)");
+    // Check it found the right contact.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact1@example.com';
+    $this->assertEquals(1, $bao->find(1), "Failed to find contact1 (test 2)");
+    $this->assertEquals($contact_1, $bao->civicrm_contact_id, "Failed to populate contact_id (test 2)");
+
+    //
+    // Attribute the email to two different contacts, but have the first one in the group.
+    //
+    $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact1@example.com'])['id'];
+    CRM_Contact_BAO_GroupContact::addContactsToGroup([$contact_1], $audience->getSubscriptionGroup());
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals(['used_first_undeleted_contact_in_group' => 1] + $default_stats, $stats,
+      "Expected to have found contact 1 because they were in the group whereas contact 2 was not.");
+    // Check it found the right contact.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact1@example.com';
+    $this->assertEquals(1, $bao->find(1), "Failed to find contact1 (test 3)");
+    $this->assertEquals($contact_1, $bao->civicrm_contact_id, "Failed to populate contact_id (test 3)");
+
+    //
+    // Email still owned by 2 contacts, but one *used* to be in the group - expect to pick that one.
+    //
+    $contacts = [$contact_1];
+    CRM_Contact_BAO_GroupContact::removeContactsFromGroup($contacts, $audience->getSubscriptionGroup(), 'Admin', 'Removed');
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals(['used_first_undeleted_contact_with_group_history' => 1] + $default_stats, $stats,
+      "Expected to have found contact 1 because they have a subscription history.");
+    // Check it found the right contact.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact1@example.com';
+    $this->assertEquals(1, $bao->find(1), "Failed to find contact1 (test 4)");
+    $this->assertEquals($contact_1, $bao->civicrm_contact_id, "Failed to populate contact_id (test 4)");
+
+    //
+    // Completely remove contact 1 and recreate so that neither contact 1 nor 2
+    // has any subscription history but both share teh email.
+    //
+    // Algorithm should now choose contact 2 which will have lower ID.
+    //
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
+    civicrm_api3('Contact', 'delete', ['id' => $contact_1, 'skip_undelete'=>1]);
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals(['used_first_undeleted_contact' => 1] + $default_stats, $stats,
+      "Expected to have found first contact.");
+    // Check it found the right contact.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact1@example.com';
+    $this->assertEquals(1, $bao->find(1), "Failed to find contact1 (test 5)");
+    $this->assertEquals($contact_2, $bao->civicrm_contact_id, "Failed to populate contact_id (test 5)");
+
+    // Finally, a contact at mailchimp has an email we don't know.
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL, mailchimp_email = "contact3@example.com";');
+    $stats = $audience->populateMissingContactIds();
+    $this->assertEquals(['remaining' => 1] + $default_stats, $stats,
+      "Expected to have one contact remaining");
+
+  }
   /**
    * Check we have our special table that helps us with sync.
    */
@@ -139,13 +269,41 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     // Set up config so we know 'list_1' is supposed to be synced with this new group.
     $config = CRM_Mailchimpsync::getConfig();
     $config['lists']['list_1'] = [
+      'apiKey'            => 'mock_account_1',
       'subscriptionGroup' => $mailing_group_id,
     ];
 
-    $api->mergeCiviData(['list_id' => 'list_1']);
+    //$api->mergeCiviData([]);
   }
 
   // Test helpers.
+  /**
+   * Set up simple config, return an audience for it.
+   *
+   * @param return CRM_Mailchimpsync_Audience
+   */
+  protected function createConfigFixture1AndGetAudience($with_group = FALSE) {
+    if ($with_group) {
+      $group_id = civicrm_api3('Group', 'create', [
+        'name'       => "test_list_1",
+        'title'      => "test_list_1",
+        'group_type' => "Mailing List",
+      ])['id'];
+    }
+    else {
+      $group_id = NULL;
+    }
+    CRM_Mailchimpsync::setConfig([
+      'lists' => [
+        'list_1' => [
+          'apiKey' => 'mock_account_1',
+          'subscriptionGroup' => $group_id,
+        ],
+      ]
+    ]);
+    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+    return $audience;
+  }
   public function assertExpectedCacheStats($expected) {
     // Fetch stats.
     $sql = "SELECT mailchimp_status, COUNT(id) count FROM civicrm_mailchimpsync_cache GROUP BY mailchimp_status";
@@ -166,4 +324,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       }
     }
   }
+    public function dumpTables() {
+      print "\nContacts: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT id, first_name FROM civicrm_contact ORDER BY id")->fetchAll()) . "\n";
+      print "Emails: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT id, contact_id, email FROM civicrm_email ORDER BY contact_id")->fetchAll()) . "\n";
+      print "Cache: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT mailchimp_email, civicrm_contact_id FROM civicrm_mailchimpsync_cache")->fetchAll()) . "\n";
+    }
+
 }

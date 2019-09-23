@@ -2,6 +2,8 @@
 /**
  * Class to represent a Mailchimp Audience(list) that is synced with CiviCRM.
  *
+ * This handles the config for this audience, too.
+ *
  */
 class CRM_Mailchimpsync_Audience
 {
@@ -11,8 +13,6 @@ class CRM_Mailchimpsync_Audience
   /** @var array */
   protected $config;
 
-  /** @var int */
-  protected $civicrm_subscription_group_id;
 
   protected function __construct(string $list_id) {
     $this->mailchimp_list_id = $list_id;
@@ -64,7 +64,10 @@ class CRM_Mailchimpsync_Audience
    * @return int
    */
   public function getSubscriptionGroup() {
-    return $this->config['subscriptionGroup'];
+    if (empty($this->config['subscriptionGroup'])) {
+      throw new \Exception("No subscription group configured for list $this->mailchimp_list_id");
+    }
+    return (int) $this->config['subscriptionGroup'];
   }
   /**
    * Merge subscriber data form Mailchimp into our table.
@@ -124,6 +127,204 @@ class CRM_Mailchimpsync_Audience
     return $bao;
   }
 
+  /**
+   * Merge data form CiviCRM into our table.
+   *
+   * We may begin with the cache table possibly:
+   *
+   * - being empty (or empty for this list/subscriptionGroup)
+   *
+   * - having records from Mailchimp that don't have contact Ids
+   *
+   * - having records from Mailchimp that have invalid contact Ids
+   *
+   * - having valid contact Ids.
+   *
+   * - having rows that existed in Civi last time (may/not now) and not in Mailchimp.
+   *
+   * First get everything we know about contacts in the subscriptionGroup
+   *
+   * @param array $params
+   */
+  public function mergeCiviData(array $params=[]) {
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+
+    // Select the most recent subscription history line for each contact in the group.
+    $sql = "SELECT contact_id, date, status FROM civicrm_subscription_history h
+      WHERE group_id = $civicrm_subscription_group_id
+      AND NOT EXISTS (
+        SELECT id
+          FROM civicrm_subscription_history h2
+          WHERE h2.group_id = $civicrm_subscription_group_id
+                AND h2.contact_id = h1.contact_id
+                AND h2.date < h1.date
+      )";
+    $dao = CRM_Core_DAO::executeQuery($sql);
+
+
+  }
+  /**
+   * Remove invalid CiviCRM data.
+   *
+   * e.g. if a contact is deleted (including a merge).
+   *
+   * @return int Number of affected rows.
+   */
+  public function removeInvalidContactIds() {
+
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        LEFT JOIN civicrm_contact cc ON mc.civicrm_contact_id = cc.id AND cc.is_deleted = 0
+         SET civicrm_contact_id = NULL, civicrm_data = NULL
+       WHERE mc.civicrm_contact_id IS NOT NULL
+             AND cc.id IS NULL
+             AND mc.mailchimp_list_id = %1;";
+
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+
+    return $dao->affectedRows();
+  }
+  /**
+   *
+   * @return int Number of affected rows.
+   */
+  public function populateMissingContactIds() {
+
+    $stats = [
+      'found_by_single_email'                           => 0,
+      'used_first_undeleted_contact_in_group'           => 0,
+      'used_first_undeleted_contact_with_group_history' => 0,
+      'used_first_undeleted_contact'                    => 0,
+      'remaining'                                       => 0,
+    ];
+
+    // Don't run expensive queries if we don't have to: see what's to do.
+    $stats['remaining'] = (int) CRM_Core_DAO::executeQuery(
+      'SELECT COUNT(*) FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1 AND civicrm_contact_id IS NULL',
+      [1 => [$this->mailchimp_list_id, 'String']]
+    )->fetchValue();
+
+    if ($stats['remaining'] == 0) {
+      // No need!
+      return $stats;
+    }
+
+    //
+    // If we find that the email is owned by a single non-deleted contact, use that.
+    //
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+          GROUP BY e.email
+          HAVING COUNT(DISTINCT e.contact_id) = 1
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    $stats['found_by_single_email'] = $dao->affectedRows();
+    $stats['remaining'] -= $stats['found_by_single_email'];
+
+    if ($stats['remaining'] == 0) {
+      // All done.
+      return $stats;
+    }
+
+    //
+    // Next, use the first (lowest contact ID) that owns the email that is Added to the group.
+    //
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+            INNER JOIN civicrm_group_contact g
+                      ON e.contact_id = g.contact_id
+                      AND g.group_id = $civicrm_subscription_group_id
+                      AND g.status = 'Added'
+          GROUP BY e.email
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    $stats['used_first_undeleted_contact_in_group'] = $dao->affectedRows();
+    $stats['remaining'] -= $stats['used_first_undeleted_contact_in_group'];
+
+    if ($stats['remaining'] == 0) {
+      // No need!
+      return $stats;
+    }
+
+    //
+    // Next, use the first (lowest contact ID) that owns the email that has any group history.
+    //
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+            INNER JOIN civicrm_subscription_history h
+                      ON e.contact_id = h.contact_id
+                      AND h.group_id = $civicrm_subscription_group_id
+          GROUP BY e.email
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    $stats['used_first_undeleted_contact_with_group_history'] = $dao->affectedRows();
+    $stats['remaining'] -= $stats['used_first_undeleted_contact_with_group_history'];
+
+    if ($stats['remaining'] == 0) {
+      // No need!
+      return $stats;
+    }
+
+    //
+    // OK, now we just simply pick the first non-deleted contact.
+    //
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+          GROUP BY e.email
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    $stats['used_first_undeleted_contact'] = $dao->affectedRows();
+    $stats['remaining'] -= $stats['used_first_undeleted_contact'];
+
+    if ($stats['remaining'] == 0) {
+      // No need!
+      return $stats;
+    }
+
+    // Remaining contacts are new to CiviCRM.
+    // Create them now.
+    return $stats;
+  }
   /**
    * Fetches the appropriate API object for this list.
    *

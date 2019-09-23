@@ -1,0 +1,41 @@
+digraph A {
+  graph [fontname="Lato", bgcolor="#eeeeee"]
+  node [fontname="Lato", shape=rectangle, style="filled" fillcolor="white", color="#444444"]
+  edge [fontname="Lato"]
+
+  start [label="Start", style="filled,rounded", fillcolor="#ffee88"]
+
+  start->processFetchMailchimp
+  processFetchMailchimp [label="Fetch Mailchimp data for list\nUpdate existing/create new based on email hash"]
+
+  processFetchMailchimp->process2
+  process2 [label="check pre-existing contact_ids\nset them NULL if they belong to deleted contacts or no longer exist."]
+
+  process2->process3
+  process3 [label="populate missing contactID by emails"]
+
+  #qStaffInterestCount [label="How many staff are\ncapable, interested and available\nto do this work\nwith normal pay and conditions?", shape=diamond]
+  #selectionProcess [label="Selection process?", shape=rectangle]
+  #qSkills [label="Feasible to\ndevelop skills?", shape=diamond]
+  #qUrgent [label="Urgent?", shape=diamond]
+  #qEmploy [label="Legally\nemployment?", shape=diamond]
+  #qConsultant [label="Skills required\nfavour consultant?", shape=diamond]
+
+  #endTempContract [label="Temporary contract ammendment", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
+  #endConsultant [label="Find consultant", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
+  #endRecruit [label="Recruit on\nfixed term", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
+
+  #start -> qStaffInterestCount [color="#ff0000"]
+  #qSkills -> qStaffInterestCount [label="Yes"]
+  #qStaffInterestCount -> endTempContract [label="1"]
+  #qStaffInterestCount -> selectionProcess [label="2+"]
+  #qStaffInterestCount -> qSkills [label="none"]
+  #selectionProcess -> endTempContract
+  #qSkills -> qEmploy [label="No"]
+  #qEmploy -> qUrgent [label="No"]
+  #qUrgent -> endConsultant [label="Yes"]
+  #qUrgent -> qConsultant [label="No"]
+  #qConsultant -> endConsultant [label="Yes"]
+  #qConsultant -> endRecruit [label="No"]
+  #qEmploy -> endRecruit [label="Yes", weight=2]
+}
