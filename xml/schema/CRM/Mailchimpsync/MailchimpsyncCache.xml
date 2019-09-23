@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="iso-8859-1" ?>
+
+<table>
+  <base>CRM/Mailchimpsync</base>
+  <class>MailchimpsyncCache</class>
+  <name>civicrm_mailchimpsync_cache</name>
+  <comment>Holds copies of data from Mailchimp and CiviCRM that assist with keeping both in sync.</comment>
+  <log>false</log>
+
+  <field>
+    <name>id</name>
+    <type>int unsigned</type>
+    <required>true</required>
+    <comment>Unique MailchimpsyncCache ID</comment>
+  </field>
+  <primaryKey>
+    <name>id</name>
+    <autoincrement>true</autoincrement>
+  </primaryKey>
+
+  <field>
+    <name>mailchimp_list_id</name>
+    <type>varchar</type>
+    <length>32</length>
+    <required>true</required>
+  </field>
+
+  <field>
+    <name>mailchimp_member_id</name>
+    <type>char</type>
+    <length>32</length>
+    <required>true</required>
+    <comment>Theoretically redundant md5 of lower case email but Mailchimp has bugs</comment>
+  </field>
+
+  <field>
+    <name>mailchimp_email</name>
+    <type>varchar</type>
+    <length>255</length>
+    <required>true</required>
+  </field>
+
+  <field>
+    <name>mailchimp_status</name>
+    <type>varchar</type>
+    <length>20</length>
+  </field>
+
+  <field>
+    <name>mailchimp_status</name>
+    <type>varchar</type>
+    <length>20</length>
+    <comment>subscribed|unsubscribed|cleaned|pending|transactional|archived</comment>
+  </field>
+
+  <field>
+    <name>civicrm_status</name>
+    <type>varchar</type>
+    <length>8</length>
+    <comment>added|removed|pending?</comment>
+  </field>
+
+  <field>
+    <name>mailchimp_updated</name>
+    <type>datetime</type>
+  </field>
+
+  <field>
+    <name>mailchimp_data</name>
+    <type>text</type>
+    <serialize>json</serialize>
+    <comment>Json data</comment>
+  </field>
+
+  <field>
+    <name>civicrm_data</name>
+    <type>text</type>
+    <serialize>json</serialize>
+    <comment>Json data</comment>
+  </field>
+
+  <field>
+    <name>civicrm_contact_id</name>
+    <type>int unsigned</type>
+    <comment>FK to Contact</comment>
+  </field>
+  <foreignKey>
+    <name>civicrm_contact_id</name>
+    <table>civicrm_contact</table>
+    <key>id</key>
+    <onDelete>CASCADE</onDelete>
+  </foreignKey>
+
+</table>

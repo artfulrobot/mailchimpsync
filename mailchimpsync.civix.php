@@ -456,5 +456,11 @@ function _mailchimpsync_civix_civicrm_alterSettingsFolders(&$metaDataFolders = N
 
 function _mailchimpsync_civix_civicrm_entityTypes(&$entityTypes) {
   $entityTypes = array_merge($entityTypes, array (
+    'CRM_Mailchimpsync_DAO_MailchimpsyncCache' => 
+    array (
+      'name' => 'MailchimpsyncCache',
+      'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncCache',
+      'table' => 'civicrm_mailchimpsync_cache',
+    ),
   ));
 }
