@@ -255,6 +255,46 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       "Expected to have one contact remaining");
 
   }
+  public function testContactsCreated() {
+    // Create records without contact id.
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email)
+            VALUES(%1, 'list_1', %2)";
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
+      2 => ['contact1@example.com', 'String'],
+    ]);
+
+    $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact2@example.com'])['id'];
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email, civicrm_contact_id)
+            VALUES(%1, 'list_1', %2, %3)";
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
+      2 => ['contact2@example.com', 'String'],
+      3 => [$contact_2, 'Integer'],
+    ]);
+
+    // Create simple config.
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+
+    // Create missing contacts
+    $created = $audience->createNewContactsFromMailchimp();
+    $this->assertEquals(1, $created);
+
+    // Check we have our new contact.
+    $email = CRM_Core_DAO::executeQuery('SELECT COUNT(*) FROM civicrm_email WHERE email = %1', [1 => ['contact1@example.com', 'String']])->fetchValue();
+    $this->assertEquals(1, $email);
+
+    // Check the contact 2 was not harmed.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_email = 'contact2@example.com';
+    if ($bao->find(1)) {
+      $this->assertEquals($contact_2, $bao->civicrm_contact_id, "Failed checking that the matched contact was not touched by creating a new one.");
+    }
+    else {
+      $this->fail("Failed to find contact2@example.com");
+    }
+
+  }
   /**
    * Check we have our special table that helps us with sync.
    */

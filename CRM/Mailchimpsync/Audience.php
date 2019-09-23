@@ -185,8 +185,10 @@ class CRM_Mailchimpsync_Audience
     return $dao->affectedRows();
   }
   /**
+   * Try various techniques for finding an appropriate CiviCRM Contact ID from
+   * the email found at Mailchimp.
    *
-   * @return int Number of affected rows.
+   * @return array of stats.
    */
   public function populateMissingContactIds() {
 
@@ -324,6 +326,40 @@ class CRM_Mailchimpsync_Audience
     // Remaining contacts are new to CiviCRM.
     // Create them now.
     return $stats;
+  }
+  /**
+   * Create contacts found at Mailchimp but not in CiviCRM.
+   *
+   * Call this after calling populateMissingContactIds()
+   *
+   * @return int No. contacts created.
+   */
+  public function createNewContactsFromMailchimp() {
+
+    $total = 0;
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->mailchimp_list_id = $this->mailchimp_list_id;
+    $bao->civicrm_contact_id = 'null';
+    $bao->find();
+    while ($bao->fetch()) {
+      $total++;
+
+      // Create contact.
+      $params = [
+        'contact_type' => 'Individual',
+        'email' => $bao->mailchimp_email,
+      ];
+
+      // @todo names etc.
+
+      $contact_id = civicrm_api3('Contact', 'create', $params)['id'];
+
+      // Update.
+      $bao->civicrm_contact_id = $contact_id;
+      $bao->save();
+    }
+
+    return $total;
   }
   /**
    * Fetches the appropriate API object for this list.
