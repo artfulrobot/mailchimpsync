@@ -28,4 +28,19 @@ class CRM_Mailchimpsync
     }
     return \Civi::$statics['mailchimpsync_apis'][$key];
   }
+  /**
+   * Access CiviCRM setting for main config.
+   *
+   * @return array.
+   */
+  public static function getConfig() {
+    return Civi::settings()->get('mailchimpsync_config');
+  }
+  /**
+   * Set CiviCRM setting for main config.
+   *
+   */
+  public static function setConfig($config) {
+    Civi::settings()->set('mailchimpsync_config', $config);
+  }
 }

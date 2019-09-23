@@ -20,66 +20,13 @@ class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpA
   }
 
   /**
-   * Merge subscriber data form Mailchimp into our table.
+   * Fetch data from CiviCRM for given list_id.
    *
-   * @param array $params with keys:
-   * - list_id  Mailchimp list ID.
-   * - since    Only load things changed since this date. (optional)
+   * @param array $params Must contain key 'list_id'
    */
-  public function mergeMailchimpData(array $params) {
-    if (!isset($params['list_id'])) {
-      throw new \InvalidArgumentException('mergeMailchimpData requires list_id');
-    }
-
-    $query = [
-      'count' => static::MAX_MEMBERS_COUNT,
-      'offset' => 0,
-    ];
-    do {
-      $response = $this->get("lists/$params[list_id]/members", $query);
-
-      // Fetch (filtered) data from our mock_mailchimp_data array.
-      // Insert it into our cache table.
-      foreach ($response['members'] ?? [] as $member) {
-        $this->mergeMailchimpMember($params['list_id'], $member);
-      }
-
-      // Prepare to load next page.
-      $query['offset'] += static::MAX_MEMBERS_COUNT;
-
-    } while ($response['total_items'] > $query['offset']);
+  public function mergeCiviData(array $params) {
 
   }
-  /**
-   * Copy data from mailchimp into our table.
-   *
-   * @param string $list_id
-   * @param object $member
-   *
-   * @return CRM_Mailchimpsync_BAO_MailchimpsyncCache
-   */
-  public function mergeMailchimpMember($list_id, $member) {
-    // Find ID in table.
-    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
-    $bao->mailchimp_member_id = $member['id'];
-    $bao->mailchimp_list_id = $list_id;
-    if (!$bao->find(1)) {
-      // New person.
-      $bao->mailchimp_email = $member['email_address'];
-    }
-    $bao->mailchimp_status = $member['status'];
-    $bao->mailchimp_updated = $member['last_changed'];
-
-    // Create JSON data from Mailchimp. @todo
-    $data = [];
-    $bao->mailchimp_data = json_encode($data);
-
-    // Update
-    $bao->save();
-
-    return $bao;
-  }
-
   /**
    * Calculate Mailchimp ID from email.
    *

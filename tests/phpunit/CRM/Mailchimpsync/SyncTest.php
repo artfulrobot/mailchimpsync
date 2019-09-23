@@ -30,6 +30,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   public function setUpHeadless() {
 
     // Set this TRUE after changing schema etc.
+    $force_recreate_database = TRUE;
     $force_recreate_database = FALSE;
 
     // Civi\Test has many helpers, like install(), uninstall(), sql(), and sqlFile().
@@ -43,6 +44,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $this->a_week_ago = date('Y-m-d', strtotime('today - 1 week'));
     $this->yesterday = date('Y-m-d', strtotime('yesterday'));
     // Clean out our sync table.
+    CRM_Core_DAO::executeQuery('TRUNCATE civicrm_mailchimpsync_cache');
 
     parent::setUp();
   }
@@ -78,7 +80,23 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
    * Check we have our special table that helps us with sync.
    */
   public function testFetchMailchimpData() {
-    $api = $this->getCleanMockApi([
+
+    // Create simple config.
+    CRM_Mailchimpsync::setConfig([
+      'lists' => [
+        'list_1' => [
+          'apiKey' => 'mock_account_1',
+          'subscriptionGroup' => NULL,
+        ],
+      ]
+    ]);
+
+    // Load the audience
+    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+
+    // Get the audience's API so we can provide fixture data.
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
           [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
@@ -89,25 +107,45 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       ],
     ]);
 
-    $api->mergeMailchimpData(['list_id' => 'list_1']);
-    $this->assertExpectedCacheStats([
-      'count' => 4,
-      'count_mailchimp_status_subscribed' => 2,
-    ]);
+    // Get audience for this list.
+    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
 
+    // We do this twice to make sure that existing records are updated;
+    // they will exist after the intial call.
+    for ($i=0; $i<2; ++$i) {
+      $audience->mergeMailchimpData();
+      $this->assertExpectedCacheStats([
+        'count' => 4,
+        'count_mailchimp_status_subscribed' => 2,
+        'count_mailchimp_status_unsubscribed' => 1,
+        'count_mailchimp_status_transactional' => 1,
+        'count_mailchimp_status_pending' => 0,
+      ]);
+    }
+
+  }
+
+  /**
+   * Check we have our special table that helps us with sync.
+   */
+  public function xtestFetchCiviData() {
+    $result = civicrm_api3('Group', 'create', [
+      'name'       => "test_list_1",
+      'title'      => "test_list_1",
+      'group_type' => "Mailing List",
+    ]);
+    $mailing_group_id = $result['id'];
+
+    // Set up config so we know 'list_1' is supposed to be synced with this new group.
+    $config = CRM_Mailchimpsync::getConfig();
+    $config['lists']['list_1'] = [
+      'subscriptionGroup' => $mailing_group_id,
+    ];
+
+    $api->mergeCiviData(['list_id' => 'list_1']);
   }
 
   // Test helpers.
-  /**
-   * Helper function.
-   */
-  public function getCleanMockApi($subscriber_data=NULL) {
-    $this->api = CRM_Mailchimpsync::getMailchimpApi('mock_account_1', TRUE);
-    if ($subscriber_data !== NULL) {
-      $this->api->setMockMailchimpData($subscriber_data);
-    }
-    return $this->api;
-  }
   public function assertExpectedCacheStats($expected) {
     // Fetch stats.
     $sql = "SELECT mailchimp_status, COUNT(id) count FROM civicrm_mailchimpsync_cache GROUP BY mailchimp_status";

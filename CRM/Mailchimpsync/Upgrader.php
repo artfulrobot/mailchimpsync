@@ -23,15 +23,16 @@ class CRM_Mailchimpsync_Upgrader extends CRM_Mailchimpsync_Upgrader_Base {
    * of your installation depends on accessing an entity that is itself
    * created during the installation (e.g., a setting or a managed entity), do
    * so here to avoid order of operation problems.
-   *
+   */
   public function postInstall() {
-    $customFieldId = civicrm_api3('CustomField', 'getvalue', array(
-      'return' => array("id"),
-      'name' => "customFieldCreatedViaManagedHook",
-    ));
-    civicrm_api3('Setting', 'create', array(
-      'myWeirdFieldSetting' => array('id' => $customFieldId, 'weirdness' => 1),
-    ));
+    $config = CRM_Mailchimpsync::getConfig();
+    if (!$config) {
+      // Create default config.
+      $config = [
+        'lists' => [],
+      ];
+      CRM_Mailchimpsync::setConfig($config);
+    }
   }
 
   /**
