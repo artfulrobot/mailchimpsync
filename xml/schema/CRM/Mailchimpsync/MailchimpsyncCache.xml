@@ -29,7 +29,6 @@
     <name>mailchimp_member_id</name>
     <type>char</type>
     <length>32</length>
-    <required>true</required>
     <comment>Theoretically redundant md5 of lower case email but Mailchimp has bugs</comment>
   </field>
 
@@ -37,7 +36,6 @@
     <name>mailchimp_email</name>
     <type>varchar</type>
     <length>255</length>
-    <required>true</required>
   </field>
 
   <field>

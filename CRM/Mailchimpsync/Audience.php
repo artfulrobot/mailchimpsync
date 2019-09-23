@@ -128,42 +128,6 @@ class CRM_Mailchimpsync_Audience
   }
 
   /**
-   * Merge data form CiviCRM into our table.
-   *
-   * We may begin with the cache table possibly:
-   *
-   * - being empty (or empty for this list/subscriptionGroup)
-   *
-   * - having records from Mailchimp that don't have contact Ids
-   *
-   * - having records from Mailchimp that have invalid contact Ids
-   *
-   * - having valid contact Ids.
-   *
-   * - having rows that existed in Civi last time (may/not now) and not in Mailchimp.
-   *
-   * First get everything we know about contacts in the subscriptionGroup
-   *
-   * @param array $params
-   */
-  public function mergeCiviData(array $params=[]) {
-    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
-
-    // Select the most recent subscription history line for each contact in the group.
-    $sql = "SELECT contact_id, date, status FROM civicrm_subscription_history h
-      WHERE group_id = $civicrm_subscription_group_id
-      AND NOT EXISTS (
-        SELECT id
-          FROM civicrm_subscription_history h2
-          WHERE h2.group_id = $civicrm_subscription_group_id
-                AND h2.contact_id = h1.contact_id
-                AND h2.date < h1.date
-      )";
-    $dao = CRM_Core_DAO::executeQuery($sql);
-
-
-  }
-  /**
    * Remove invalid CiviCRM data.
    *
    * e.g. if a contact is deleted (including a merge).
@@ -212,7 +176,7 @@ class CRM_Mailchimpsync_Audience
     }
 
     //
-    // If we find that the email is owned by a single non-deleted contact, use that.
+    // 1. If we find that the email is owned by a single non-deleted contact, use that.
     //
     $sql = "
       UPDATE civicrm_mailchimpsync_cache mc
@@ -238,7 +202,7 @@ class CRM_Mailchimpsync_Audience
     }
 
     //
-    // Next, use the first (lowest contact ID) that owns the email that is Added to the group.
+    // 2. Next, use the first (lowest contact ID) that owns the email that is Added to the group.
     //
     $civicrm_subscription_group_id = $this->getSubscriptionGroup();
     $sql = "
@@ -268,7 +232,7 @@ class CRM_Mailchimpsync_Audience
     }
 
     //
-    // Next, use the first (lowest contact ID) that owns the email that has any group history.
+    // 3. Next, use the first (lowest contact ID) that owns the email that has any group history.
     //
     $civicrm_subscription_group_id = $this->getSubscriptionGroup();
     $sql = "
@@ -297,7 +261,7 @@ class CRM_Mailchimpsync_Audience
     }
 
     //
-    // OK, now we just simply pick the first non-deleted contact.
+    // 4. OK, now we just simply pick the first non-deleted contact.
     //
     $civicrm_subscription_group_id = $this->getSubscriptionGroup();
 
@@ -317,11 +281,6 @@ class CRM_Mailchimpsync_Audience
     $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
     $stats['used_first_undeleted_contact'] = $dao->affectedRows();
     $stats['remaining'] -= $stats['used_first_undeleted_contact'];
-
-    if ($stats['remaining'] == 0) {
-      // No need!
-      return $stats;
-    }
 
     // Remaining contacts are new to CiviCRM.
     // Create them now.
@@ -360,6 +319,64 @@ class CRM_Mailchimpsync_Audience
     }
 
     return $total;
+  }
+  /**
+   *
+   * If there are any contacts Added to the subscription group in CiviCRM, but
+   * not known to Mailchimp, add them to the cache table.
+   *
+   * @param array $params
+   */
+  public function addCiviOnly() {
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+
+    $sql = "
+      INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id)
+      SELECT %1 mailchimp_list_id, contact_id
+      FROM civicrm_group_contact gc
+      WHERE gc.group_id = $civicrm_subscription_group_id
+            AND gc.status = 'Added'
+            AND NOT EXISTS (
+              SELECT id FROM civicrm_mailchimpsync_cache mc2
+              WHERE mc2.mailchimp_list_id = %1 AND civicrm_contact_id = gc.contact_id
+          )
+    ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [
+      1 => [$this->mailchimp_list_id, 'String']
+    ]);
+    return $dao->affectedRows();
+
+
+    // Foreach contact Id we'll need to know whether there's a cache record for
+    // it. If we did this in a loop we'd be creating N queries where N is the
+    // number of contacts ever in the group.
+
+
+    /*
+    // Select the most recent subscription history line for each contact in the group.
+    $sql = "SELECT contact_id, date, status FROM civicrm_subscription_history h
+      WHERE group_id = $civicrm_subscription_group_id
+      AND NOT EXISTS (
+        SELECT id
+          FROM civicrm_subscription_history h2
+          WHERE h2.group_id = $civicrm_subscription_group_id
+                AND h2.contact_id = h1.contact_id
+                AND h2.date < h1.date
+      )";
+    $dao = CRM_Core_DAO::executeQuery($sql);
+    while ($dao->fetch()) {
+      if (!isset($known_contacts[$dao->contact_id])) {
+        if ($dao->status === 'Added') {
+          // Found a contact that needs to be created at Mailchimp.
+        }
+      }
+    }
+
+    // Instead we'll cache the contats in this list in RAM.
+    $known_contacts = CRM_Core_DAO::executeQuery('SELECT civicrm_contact_id contact_id FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1')
+      ->fetchMap('contact_id', 'contact_id');
+
+     */
   }
   /**
    * Fetches the appropriate API object for this list.

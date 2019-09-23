@@ -296,6 +296,39 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
   }
   /**
+   */
+  public function testCiviOnly() {
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+
+    // Contact 1, create and add into group.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    $contacts = [$contact_1];
+    CRM_Contact_BAO_GroupContact::addContactsToGroup($contacts, $audience->getSubscriptionGroup());
+
+    // Contact 2, not in the group, but in Mailchimp.
+    $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact2@example.com'])['id'];
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (civicrm_contact_id, mailchimp_member_id, mailchimp_list_id, mailchimp_email)
+            VALUES($contact_2, %1, 'list_1', %2)";
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
+      2 => ['contact1@example.com', 'String'],
+    ]);
+
+    // Do work.
+    $added = $audience->addCiviOnly();
+
+    // Check
+    $this->assertEquals(1, $added);
+
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    // Check Contact 1 is now in the cache table.
+    $bao->civicrm_contact_id = $contact_1;
+    $this->assertEquals(1, $bao->count());
+    // Check Contact 2 is still (should not have changed!)
+    $bao->civicrm_contact_id = $contact_2;
+    $this->assertEquals(1, $bao->count());
+  }
+  /**
    * Check we have our special table that helps us with sync.
    */
   public function xtestFetchCiviData() {

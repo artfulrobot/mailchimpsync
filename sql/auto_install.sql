@@ -83,8 +83,8 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
 
      `id` int unsigned NOT NULL AUTO_INCREMENT  COMMENT 'Unique MailchimpsyncCache ID',
      `mailchimp_list_id` varchar(32) NOT NULL   ,
-     `mailchimp_member_id` char(32) NOT NULL   COMMENT 'Theoretically redundant md5 of lower case email but Mailchimp has bugs',
-     `mailchimp_email` varchar(255) NOT NULL   ,
+     `mailchimp_member_id` char(32)    COMMENT 'Theoretically redundant md5 of lower case email but Mailchimp has bugs',
+     `mailchimp_email` varchar(255)    ,
      `mailchimp_status` varchar(20)    COMMENT 'subscribed|unsubscribed|cleaned|pending|transactional|archived',
      `civicrm_status` varchar(8)    COMMENT 'added|removed|pending?',
      `mailchimp_updated` datetime    ,
