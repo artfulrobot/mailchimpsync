@@ -8,14 +8,9 @@ use Civi\Test\TransactionalInterface;
 /**
  * General tests
  *
- * Tips:
- *  - With HookInterface, you may implement CiviCRM hooks directly in the test class.
- *    Simply create corresponding functions (e.g. "hook_civicrm_post(...)" or similar).
- *  - With TransactionalInterface, any data changes made by setUp() or test****() functions will
- *    rollback automatically -- as long as you don't manipulate schema or truncate tables.
- *    If this test needs to manipulate schema or truncate tables, then either:
- *       a. Do all that using setupHeadless() and Civi\Test.
- *       b. Disable TransactionalInterface, and handle all setup/teardown yourself.
+ * @todo need to test situation where we try and fail to subscribe at mailchimp.
+ *       could be need to set to pending, or could fail for GDPR deletion.
+ *
  *
  * @group headless
  */
@@ -26,12 +21,19 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
   /** @var string 2019-09-23 type dates */
   public $a_week_ago;
+  public static $already_recreated_db = FALSE;
   public $yesterday;
   public function setUpHeadless() {
 
     // Set this TRUE after changing schema etc.
     $force_recreate_database = TRUE;
     $force_recreate_database = FALSE;
+
+    if ($force_recreate_database) {
+      // If we need to do this, we only do it once.
+      static::$already_recreated_db = TRUE;
+      $force_recreate_database = FALSE;
+    }
 
     // Civi\Test has many helpers, like install(), uninstall(), sql(), and sqlFile().
     // See: https://docs.civicrm.org/dev/en/latest/testing/phpunit/#civitest
@@ -43,8 +45,8 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   public function setUp() {
     $this->a_week_ago = date('Y-m-d', strtotime('today - 1 week'));
     $this->yesterday = date('Y-m-d', strtotime('yesterday'));
-    // Clean out our sync table.
-    CRM_Core_DAO::executeQuery('TRUNCATE civicrm_mailchimpsync_cache');
+    // Clean out our sync table (don't use TRUNCATE, doesn't play well with transactional rollback)
+    CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_cache');
 
     parent::setUp();
   }
@@ -115,6 +117,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
   }
 
+  /**
+   * If a member previously had a contact ID, but that contact Id now no longer
+   * exists, or belongs to a deleted contact, we need remove the now useless
+   * contact ID from the cache table.
+   */
   public function testDeletedContactsDetected() {
     // Create two contacts.
     $contact_1 = civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1'])['id'];
@@ -349,6 +356,238 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     //$api->mergeCiviData([]);
   }
 
+  /**
+   *
+   * Various tests on reconciling the subscription group.
+   *
+   * @dataProvider reconciliationProvider
+   */
+  public function testReconciliation($data) {
+    $description = $data['description'] . "\n";
+    $mailchimp_status = $data['mailchimp_status'];
+    $mailchimp_updated = $data['mailchimp_updated'];
+    $civicrm_status = $data['civicrm_status'];
+    $civicrm_updated = $data['civicrm_updated'];
+
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+
+    // Create one test contact.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+
+    // Create cache record manually for our fixture.
+    $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $bao->civicrm_contact_id = $contact_1;
+    $bao->mailchimp_list_id = 'list_1';
+
+    if ($mailchimp_status) {
+      $bao->mailchimp_status = $mailchimp_status;
+      $bao->mailchimp_updated = $mailchimp_updated;
+    }
+    if ($civicrm_status) {
+      $bao->civicrm_status = $civicrm_status;
+      $bao->civicrm_updated = $civicrm_updated;
+      if ($civicrm_status === 'Added') {
+        $bao->subscribeInCiviCRM($audience);
+      }
+      elseif ($civicrm_status === 'Removed') {
+        $bao->unsubscribeInCiviCRM($audience);
+      }
+      elseif ($civicrm_status === 'Deleted') {
+        // First we have to subscribe them.
+        $bao->subscribeInCiviCRM($audience);
+        // Then unsubscribe them.
+        $contacts = [$bao->civicrm_contact_id];
+        CRM_Contact_BAO_GroupContact::removeContactsFromGroup(
+          $contacts, $audience->getSubscriptionGroup(), 'MCsync', 'Deleted');
+        $bao->civicrm_status = 'Deleted';
+      }
+    }
+    $bao->save();
+
+    // Now it's all set up, run reconciliation then test expected outcomes.
+    $updates = [];
+    $audience->reconcileSubscriptionGroup($updates, $bao);
+
+    $this->assertEquals($data['expected_mailchimp_updates'], $updates, "$description Mailchimp updates differ");
+
+    $gc = new CRM_Contact_BAO_GroupContact();
+    $gc->contact_id = $bao->civicrm_contact_id;
+    $gc->group_id = $audience->getSubscriptionGroup();
+
+    switch ($data['expected_group_status']) {
+
+    case null:
+    case 'Deleted':
+      // Expect there to be no group membership for this contact.
+      $this->assertEquals(0, $gc->find(), "$description Found group contact record, expected none.");
+      break;
+
+    case 'Added':
+    case 'Removed':
+      $this->assertEquals(1, $gc->find(1), "$description No GroupContact record.");
+      $this->assertEquals($data['expected_group_status'], $gc->status, "$description Group contact record wrong.");
+      break;
+
+    default:
+      throw new Exception("Invalid exepcted_group_status: $data[expected_group_status]");
+    }
+  }
+
+  /**
+   * Provides test cases for testReconciliation
+   *
+   */
+  public function reconciliationProvider() {
+    $today = date('Y-m-d') . 'T00:00:00Z';
+    return [
+      [[
+        'description' => "Strange case (should never happen) where contact apparently exists nowhere",
+        'civicrm_status' => null,
+        'civicrm_updated' => null,
+        'mailchimp_status' => null,
+        'mailchimp_updated' => null,
+        'expected_group_status' => null,
+        'expected_mailchimp_updates' => [],
+      ]],
+
+      [[
+        'description' => "New contact at Mailchimp",
+        'civicrm_status' => null,
+        'civicrm_updated' => null,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "New contact at CiviCRM",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => null,
+        'mailchimp_updated' => null,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => ['status' => 'subscribed'],
+      ]],
+      [[
+        'description' => "Contacts both subscribed, civi later",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $this->yesterday,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contacts both subscribed, mailchimp later",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contacts both unsubscribed, mailchimp later",
+        'civicrm_status' => 'Removed',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'unsubscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contacts both unsubscribed, civi later",
+        'civicrm_status' => 'Removed',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'unsubscribed',
+        'mailchimp_updated' => $this->yesterday,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact has unsubscribed at Mailchimp, CiviCRM should update",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'unsubscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact has been archived at Mailchimp, CiviCRM should update",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'archived',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact has been cleaned at Mailchimp, CiviCRM should update",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'cleaned',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact has been subscribed again at CiviCRM, mailchimp should update",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'unsubscribed',
+        'mailchimp_updated' => $this->yesterday,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => ['status' => 'subscribed'],
+      ]],
+      [[
+        'description' => "Contact has been subscribed again at CiviCRM, mailchimp should update unarchive",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'archived',
+        'mailchimp_updated' => $this->yesterday,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => ['status' => 'subscribed'],
+      ]],
+      [[
+        'description' => "Contact has been unsubscribed at CiviCRM, mailchimp should update unarchive",
+        'civicrm_status' => 'Removed',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $this->yesterday,
+        'expected_group_status' => 'Removed',
+        'expected_mailchimp_updates' => ['status' => 'unsubscribed'],
+      ]],
+      [[
+        'description' => "Contact has been subscribed at Mailchimp, CiviCRM should update from Removed",
+        'civicrm_status' => 'Removed',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact has been subscribed at Mailchimp, CiviCRM should update from Deleted",
+        'civicrm_status' => 'Deleted',
+        'civicrm_updated' => $this->yesterday,
+        'mailchimp_status' => 'subscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => [],
+      ]],
+      [[
+        'description' => "Contact was subscribed at CiviCRM, is unsubscribed at Mailchimp and was updated in the same second. CiviCRM should win.",
+        'civicrm_status' => 'Added',
+        'civicrm_updated' => $today,
+        'mailchimp_status' => 'unsubscribed',
+        'mailchimp_updated' => $today,
+        'expected_group_status' => 'Added',
+        'expected_mailchimp_updates' => ['status'=>'subscribed'],
+      ]],
+
+    ];
+  }
   // Test helpers.
   /**
    * Set up simple config, return an audience for it.

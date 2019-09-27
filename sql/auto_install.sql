@@ -87,14 +87,20 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
      `mailchimp_email` varchar(255)    ,
      `mailchimp_status` varchar(20)    COMMENT 'subscribed|unsubscribed|cleaned|pending|transactional|archived',
      `civicrm_status` varchar(8)    COMMENT 'added|removed|pending?',
-     `mailchimp_updated` datetime    ,
+     `mailchimp_updated` datetime    COMMENT 'From API\'s last_changed field',
+     `civicrm_updated` datetime    COMMENT 'Time subscription group last updated.',
      `mailchimp_data` text    COMMENT 'Json data',
      `civicrm_data` text    COMMENT 'Json data',
-     `civicrm_contact_id` int unsigned    COMMENT 'FK to Contact' 
+     `civicrm_contact_id` int unsigned    COMMENT 'FK to Contact',
+     `sync_status` varchar(4)   DEFAULT 'todo' COMMENT 'ok|todo|live' 
 ,
         PRIMARY KEY (`id`)
  
- 
+    ,     INDEX `index_list_id_sync_status`(
+        mailchimp_list_id
+      , sync_status
+  )
+  
 ,          CONSTRAINT FK_civicrm_mailchimpsync_cache_civicrm_contact_id FOREIGN KEY (`civicrm_contact_id`) REFERENCES `civicrm_contact`(`id`) ON DELETE CASCADE  
 )    ;
 

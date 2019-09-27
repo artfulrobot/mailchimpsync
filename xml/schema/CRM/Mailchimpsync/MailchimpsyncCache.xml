@@ -42,12 +42,6 @@
     <name>mailchimp_status</name>
     <type>varchar</type>
     <length>20</length>
-  </field>
-
-  <field>
-    <name>mailchimp_status</name>
-    <type>varchar</type>
-    <length>20</length>
     <comment>subscribed|unsubscribed|cleaned|pending|transactional|archived</comment>
   </field>
 
@@ -61,6 +55,13 @@
   <field>
     <name>mailchimp_updated</name>
     <type>datetime</type>
+    <comment>From API's last_changed field</comment>
+  </field>
+
+  <field>
+    <name>civicrm_updated</name>
+    <type>datetime</type>
+    <comment>Time subscription group last updated.</comment>
   </field>
 
   <field>
@@ -88,5 +89,20 @@
     <key>id</key>
     <onDelete>CASCADE</onDelete>
   </foreignKey>
+
+  <field>
+    <name>sync_status</name>
+    <type>varchar</type>
+    <length>4</length>
+    <default>'todo'</default>
+    <comment>ok|todo|live</comment>
+  </field>
+
+  <index>
+    <name>index_list_id_sync_status</name>
+    <fieldName>mailchimp_list_id</fieldName>
+    <fieldName>sync_status</fieldName>
+  </index>
+
 
 </table>

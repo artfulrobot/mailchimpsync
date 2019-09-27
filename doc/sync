@@ -3,13 +3,16 @@ digraph A {
   node [fontname="Lato", shape=rectangle, style="filled" fillcolor="white", color="#444444"]
   edge [fontname="Lato"]
 
-  start [label="Start", style="filled,rounded", fillcolor="#ffee88"]
+  start [label="Start Fetch", style="filled,rounded", fillcolor="#ffee88"]
 
-  start->processFetchMailchimp
-  processFetchMailchimp [label="Fetch Mailchimp data for list\nUpdate existing/create new cache rows based on email hash"]
+  start->lockCheck
+  lockCheck [label="Check audience not locked and obtain lock"]
+
+  lockCheck->processFetchMailchimp
+  processFetchMailchimp [label="Fetch Mailchimp data for list\nUpdate existing/create new cache rows based on email hash\nSet sync_status: todo"]
 
   processFetchMailchimp->process2
-  process2 [label="check pre-existing contact_ids\nset them NULL if they belong to deleted contacts or no longer exist."]
+  process2 [label="check pre-existing contact_ids\nset them NULL if they belong to deleted contacts or no longer exist.\nSet sync_status: todo"]
 
   process2->process3
   process3 [label="populate missing contactID by email matching first of:\n1. email owned by one unique not-deleted contact\n2. lowest contact ID of not-deleted contact in the group\n3. lowest contact ID of not-deleted contact previously in group\n4. lowest contact ID of not-deleted contact who has never been in group"]
@@ -18,30 +21,67 @@ digraph A {
   process4 [label="create new CiviCRM contacts for any remaining mailchimp emails"]
 
   process4->process5
-  process5 [label="Loop cache records"]
+  process5 [label="Add in subscribers at CiviCRM not found in Mailchimp data\nSet sync_status:todo"]
 
-  #qStaffInterestCount [label="How many staff are\ncapable, interested and available\nto do this work\nwith normal pay and conditions?", shape=diamond]
-  #selectionProcess [label="Selection process?", shape=rectangle]
-  #qSkills [label="Feasible to\ndevelop skills?", shape=diamond]
-  #qUrgent [label="Urgent?", shape=diamond]
-  #qEmploy [label="Legally\nemployment?", shape=diamond]
-  #qConsultant [label="Skills required\nfavour consultant?", shape=diamond]
+  process5->process6
+  process6 [label="Now we have all *contacts* that need to be processed"]
 
-  #endTempContract [label="Temporary contract ammendment", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
-  #endConsultant [label="Find consultant", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
-  #endRecruit [label="Recruit on\nfixed term", shape=rectangle, style="rounded,filled",fillcolor="#ddffcc"]
+  process6->process6b
+  process6b [label="Copy CiviCRM group subscription status and update date to cache"]
 
-  #start -> qStaffInterestCount [color="#ff0000"]
-  #qSkills -> qStaffInterestCount [label="Yes"]
-  #qStaffInterestCount -> endTempContract [label="1"]
-  #qStaffInterestCount -> selectionProcess [label="2+"]
-  #qStaffInterestCount -> qSkills [label="none"]
-  #selectionProcess -> endTempContract
-  #qSkills -> qEmploy [label="No"]
-  #qEmploy -> qUrgent [label="No"]
-  #qUrgent -> endConsultant [label="Yes"]
-  #qUrgent -> qConsultant [label="No"]
-  #qConsultant -> endConsultant [label="Yes"]
-  #qConsultant -> endRecruit [label="No"]
-  #qEmploy -> endRecruit [label="Yes", weight=2]
+  process6b->process7
+  process7 [label="Release audience lock"]
+
+  process7 ->end1
+  end1 [label="End fetch", style="filled,rounded", fillcolor="#ffee88"]
+
+  start2 [label="Start Reconciliation", style="filled,rounded", fillcolor="#ffee88"]
+  start2->p8
+  p8 [label="Process each 'todo' row in turn"]
+
+  p8->onlyCiviUpdates
+  onlyCiviUpdates [label="CiviCRM\nupdates\nneeded?", shape=diamond]
+
+    onlyCiviUpdates->p9 [taillabel="Yes" labeldistance=2]
+    p9 [label="Make CiviCRM updates\nSet sync_status:ok"]
+
+    p9->mailchimpupdates1 
+    mailchimpupdates1 [label="Mailchimp\nupdates\nneeded?", shape=diamond]
+
+      mailchimpupdates1->p10 [taillabel="Yes" labeldistance=2]
+      p10 [label="Store update\nSet sync_status: pending"]
+
+
+    onlyCiviUpdates->mailchimpupdates1 [taillabel="No" labeldistance=2]
+
+  p10->loop1
+  mailchimpupdates1->loop1 [taillabel="No" labeldistance=2]
+
+  loop1 [label="Repeat next row,\nor stop and do another batch later"]
+  loop1:e->p8:e [weight=0]
+  loop1 -> end2
+
+  end2 [label="End Reconciliation", style="filled,rounded", fillcolor="#ffee88"]
+
+
+  start3 [label="Start Batch updates", style="filled,rounded", fillcolor="#ffee88"]
+  start3->p11
+  p11 [label="Take up to 1,000 items from batch"]
+
+  p11->p12
+  p12 [label="Submit batch, create row in batches table,\nstore ID in updates table rows"]
+
+  p12->loop2
+  loop2 [label="Repeat next batch,\nor stop and do another batch later"]
+  loop2->end3
+
+  end3 [label="End Batch updates", style="filled,rounded", fillcolor="#ffee88"]
+
+  p10:e->batchTable:w
+  batchTable [label="Batch updates table"]
+  batchTable->p11
+
+  { rank=same; start; start2; start3} 
+  { rank=same; end1; end2; end3} 
+  { rank=same; p11; lockCheck; p8}
 }

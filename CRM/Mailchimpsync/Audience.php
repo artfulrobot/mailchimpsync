@@ -69,6 +69,7 @@ class CRM_Mailchimpsync_Audience
     }
     return (int) $this->config['subscriptionGroup'];
   }
+  // The following methods deal with the 'fetch' phase
   /**
    * Merge subscriber data form Mailchimp into our table.
    *
@@ -114,6 +115,8 @@ class CRM_Mailchimpsync_Audience
       // New person.
       $bao->mailchimp_email = $member['email_address'];
     }
+
+    $bao->sync_status = 'todo';
     $bao->mailchimp_status = $member['status'];
     $bao->mailchimp_updated = $member['last_changed'];
 
@@ -139,7 +142,7 @@ class CRM_Mailchimpsync_Audience
     $sql = "
       UPDATE civicrm_mailchimpsync_cache mc
         LEFT JOIN civicrm_contact cc ON mc.civicrm_contact_id = cc.id AND cc.is_deleted = 0
-         SET civicrm_contact_id = NULL, civicrm_data = NULL
+         SET civicrm_contact_id = NULL, civicrm_data = NULL, sync_status = 'todo'
        WHERE mc.civicrm_contact_id IS NOT NULL
              AND cc.id IS NULL
              AND mc.mailchimp_list_id = %1;";
@@ -331,8 +334,8 @@ class CRM_Mailchimpsync_Audience
     $civicrm_subscription_group_id = $this->getSubscriptionGroup();
 
     $sql = "
-      INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id)
-      SELECT %1 mailchimp_list_id, contact_id
+      INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id, sync_status)
+      SELECT %1 mailchimp_list_id, contact_id, 'todo' sync_status
       FROM civicrm_group_contact gc
       WHERE gc.group_id = $civicrm_subscription_group_id
             AND gc.status = 'Added'
@@ -378,6 +381,149 @@ class CRM_Mailchimpsync_Audience
 
      */
   }
+
+  /**
+   * Look up the group status and store it in the cache table.
+   *
+   * Operates on entries with sync_status 'todo'
+   *
+   * As a bulk SQL operation, this will be faster than querying contacts one at a time.
+   */
+  public function copyCiviCRMSubscriptionGroupStatus() {
+    $sql = '
+      UPDATE civicrm_mailchimpsync_cache cache,
+        LEFT JOIN (
+          SELECT contact_id, status, date
+            FROM civicrm_subscription_history h1
+           WHERE h1.group_id = %1
+                 AND NOT EXISTS (
+                   SELECT id FROM civicrm_subscription_history h2
+                   WHERE h2.group_id = %1
+                         AND h2.contact_id = h1.contact_id
+                         AND h2.date > h1.date
+                )
+        ) latest ON cache.contact_id = latest.contact_id
+        SET civicrm_status = latest.status, civicrm_changed = latest.date
+        WHERE cache.mailchimp_list_id = %2 AND cache.sync_status = "todo"
+    ';
+    $params = [
+      1 => [$this->getSubscriptionGroup(), 'Integer'],
+      2 => [$this->getListId(), 'String'],
+    ];
+    CRM_Core_DAO::executeQuery($sql, $params);
+  }
+  // The following methods deal with the 'reconciliation' phase
+  /**
+   * Loop 'todo' entries and reconcile them.
+   *
+   * @param int $max_time If >0 then stop if we've been running longer than
+   * this many seconds. This is useful for http driven cron, for exmaple.
+   */
+  public function reconcileQueueProcess(int $max_time=0) {
+    $stop_time = ($max_time > 0) ? time() + $max_time : FALSE;
+
+
+    $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $dao->mailchimp_list_id = $this->getListId();
+    $dao->sync_status = 'todo';
+    $count = $dao->find();
+
+    $done = 0;
+
+    while ($dao->fetch() && (!$stop_time || (time() < $stop_time))) {
+      $this->reconcileQueueItem($dao);
+    }
+
+    return ['done' => $done, 'count' => $count];
+  }
+  /**
+   * Reconcile a single item from the cache table.
+   *
+   * This is where the real work is done.
+   *
+   * @param CRM_Mailchimpsync_DAO_MailchimpsyncCache $dao
+   */
+  public function reconcileQueueItem(CRM_Mailchimpsync_BAO_MailchimpsyncCache $contact) {
+
+    $mailchimp_updates = [];
+    $this->reconcileSubscriptionGroup($mailchimp_updates, $contact);
+  }
+
+  /**
+   * Ensure we have CiviCRM's subscription group membership in sync with Mailchimp's.
+   *
+   * @param &array $mailchimp_updates
+   * @param CRM_Mailchimpsync_BAO_MailchimpsyncCache $contact
+   */
+  public function reconcileSubscriptionGroup(&$mailchimp_updates, CRM_Mailchimpsync_BAO_MailchimpsyncCache $contact) {
+
+    if ($contact->subscriptionMostRecentlyUpdatedAtMailchimp()) {
+      // Exists in Mailchimp and Mailchimp has been updated since CiviCRM was,
+      // at least in terms of the subscription group, or the contact has no group
+      // subscription history.
+
+      if ($contact->isSubscribedAtCiviCRM()) {
+        // Added in CiviCRM.
+
+        if ($contact->isSubscribedAtMailchimp()) {
+          // Subscribed (or nearly subscribed) at both ends.
+          // No subscription group level changes needed.
+        }
+        else {
+          // Mailchimp has unsubscribed/cleaned/archived this contact
+          // (or, converted it to transactional - not sure if that happens)
+          // So we need to remove this contact from the subscription group.
+          $contact->unsubscribeInCiviCRM($this);
+        }
+      }
+      else {
+        // Removed, Deleted, or no subscription history in CiviCRM
+        if ($contact->isSubscribedAtMailchimp()) {
+          $contact->subscribeInCiviCRM($this);
+        }
+        else {
+          // Not in subscription group and not in CiviCRM's either: subscription is in sync.
+        }
+      }
+    }
+    else {
+      // Either does not exist in Mailchimp yet, or does but CiviCRM is more up-to-date
+      // in terms of its subscription group.
+      if ($contact->isSubscribedAtCiviCRM()) {
+        if ($contact->isSubscribedAtMailchimp()) {
+          // in sync.
+        }
+        else {
+          switch ($contact->mailchimp_status) {
+          case 'unsubscribed':
+          case 'archived':
+          case 'transactional':
+          case null:
+            $mailchimp_updates['status'] = 'subscribed';
+            break;
+
+          case 'cleaned':
+          default:
+          // We will not be able to subscribe this person.
+          // @todo issue warning.
+            break;
+          }
+        }
+      }
+      else {
+        // Not subscribed in CiviCRM.
+        if ($contact->isSubscribedAtMailchimp()) {
+          // Is subscribed at Mailchimp but should not be.
+          $mailchimp_updates['status'] = 'unsubscribed';
+        }
+        else {
+          // Not subscribed at Mailchimp or Civi, so already in-sync.
+        }
+      }
+    }
+  }
+
+  // utility methods
   /**
    * Fetches the appropriate API object for this list.
    *
