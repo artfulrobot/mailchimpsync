@@ -456,11 +456,23 @@ function _mailchimpsync_civix_civicrm_alterSettingsFolders(&$metaDataFolders = N
 
 function _mailchimpsync_civix_civicrm_entityTypes(&$entityTypes) {
   $entityTypes = array_merge($entityTypes, array (
+    'CRM_Mailchimpsync_DAO_MailchimpsyncBatch' => 
+    array (
+      'name' => 'MailchimpsyncBatch',
+      'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncBatch',
+      'table' => 'civicrm_mailchimpsync_batch',
+    ),
     'CRM_Mailchimpsync_DAO_MailchimpsyncCache' => 
     array (
       'name' => 'MailchimpsyncCache',
       'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncCache',
       'table' => 'civicrm_mailchimpsync_cache',
+    ),
+    'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates' => 
+    array (
+      'name' => 'MailchimpsyncUpdates',
+      'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates',
+      'table' => 'civicrm_mailchimpsync_updates',
     ),
   ));
 }

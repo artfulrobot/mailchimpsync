@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="iso-8859-1" ?>
+
+<table>
+  <base>CRM/Mailchimpsync</base>
+  <class>MailchimpsyncBatch</class>
+  <name>civicrm_mailchimpsync_batch</name>
+  <comment>Holds details about Mailchimp Batches - basically a cache</comment>
+  <log>false</log>
+
+  <field>
+    <name>id</name>
+    <type>int unsigned</type>
+    <required>true</required>
+    <comment>Unique MailchimpsyncBatch ID</comment>
+  </field>
+  <primaryKey>
+    <name>id</name>
+    <autoincrement>true</autoincrement>
+  </primaryKey>
+
+  <field>
+    <name>mailchimp_batch_id</name>
+    <type>varchar</type>
+    <length>32</length>
+    <comment>Mailchimp-supplied Batch ID</comment>
+  </field>
+
+  <field>
+    <name>status</name>
+    <type>varchar</type>
+    <length>32</length>
+    <comment>Mailchimp-supplied status</comment>
+  </field>
+
+  <field>
+    <name>submitted_at</name>
+    <type>datetime</type>
+  </field>
+
+  <field>
+    <name>completed_at</name>
+    <type>datetime</type>
+    <comment>Mailchimp-supplied date of completion</comment>
+  </field>
+
+  <field>
+    <name>finished_operations</name>
+    <type>int</type>
+    <default>0</default>
+  </field>
+
+  <field>
+    <name>errored_operations</name>
+    <type>int</type>
+    <default>0</default>
+  </field>
+
+  <field>
+    <name>total_operations</name>
+    <type>int</type>
+    <default>0</default>
+  </field>
+
+</table>

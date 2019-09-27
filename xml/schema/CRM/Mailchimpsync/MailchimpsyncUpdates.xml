@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="iso-8859-1" ?>
+
+<table>
+  <base>CRM/Mailchimpsync</base>
+  <class>MailchimpsyncUpdates</class>
+  <name>civicrm_mailchimpsync_updates</name>
+  <comment>FIXME</comment>
+  <log>false</log>
+
+  <field>
+    <name>id</name>
+    <type>int unsigned</type>
+    <required>true</required>
+    <comment>Unique MailchimpsyncUpdates ID</comment>
+  </field>
+  <primaryKey>
+    <name>id</name>
+    <autoincrement>true</autoincrement>
+  </primaryKey>
+
+  <field>
+    <name>mailchimpsync_cache_id</name>
+    <type>int unsigned</type>
+    <comment>FK to MailchimpsyncCache ID</comment>
+  </field>
+  <foreignKey>
+    <name>mailchimpsync_cache_id</name>
+    <table>civicrm_mailchimpsync_cache</table>
+    <key>id</key>
+    <onDelete>SET NULL</onDelete>
+  </foreignKey>
+
+  <field>
+    <name>mailchimpsync_batch_id</name>
+    <type>int unsigned</type>
+    <comment>FK to Mailchimpsync Batch</comment>
+  </field>
+  <foreignKey>
+    <name>mailchimpsync_batch_id</name>
+    <table>civicrm_mailchimpsync_batch</table>
+    <key>id</key>
+    <onDelete>SET NULL</onDelete>
+  </foreignKey>
+
+  <field>
+    <name>data</name>
+    <type>TEXT</type>
+    <required>true</required>
+  </field>
+
+  <field>
+    <name>completed</name>
+    <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
+  </field>
+
+
+</table>

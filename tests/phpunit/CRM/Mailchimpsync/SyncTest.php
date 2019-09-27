@@ -31,8 +31,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     if ($force_recreate_database) {
       // If we need to do this, we only do it once.
+      if (static::$already_recreated_db == TRUE) {
+        $force_recreate_database = FALSE;
+      }
       static::$already_recreated_db = TRUE;
-      $force_recreate_database = FALSE;
     }
 
     // Civi\Test has many helpers, like install(), uninstall(), sql(), and sqlFile().

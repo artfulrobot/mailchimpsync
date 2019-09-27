@@ -125,8 +125,6 @@ This could be handled by a hook on delete that notes in the cache table that the
 contact is `known_deleted` and therefore should be removed from Mailchimp lists
 during the next sync.
 
-## How to queues work, and can I use one?
-
 ## Thinking through rows in the cache table.
 
 ```
@@ -160,7 +158,7 @@ Mailchimp updates.
 - `mailchimpsync_updates` table. This table should use COMPRESSED
     - `ID`
     - `mailchimpsync_cache_id` FK (suppose it could be NULL)
-    - `update` TEXT json
+    - `data` TEXT json
     - `batch_id` FK to Mailchimp batches
     - `completed` boolean
 

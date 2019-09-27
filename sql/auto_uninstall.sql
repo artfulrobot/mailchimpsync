@@ -33,6 +33,8 @@
 
 SET FOREIGN_KEY_CHECKS=0;
 
+DROP TABLE IF EXISTS `civicrm_mailchimpsync_updates`;
 DROP TABLE IF EXISTS `civicrm_mailchimpsync_cache`;
+DROP TABLE IF EXISTS `civicrm_mailchimpsync_batch`;
 
 SET FOREIGN_KEY_CHECKS=1;
