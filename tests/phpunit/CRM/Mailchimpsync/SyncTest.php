@@ -721,6 +721,101 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       ]
     ], $api->batches, "Failed checking batches were created as expected.");
   }
+  /**
+   * Test that the batch webhook is processed OK.
+   *
+   * - test that the webhook page extracts, validates POST.
+   * - test that the request is fetched from the API, and the file loaded and parsed from the URL.
+   * - test that a success is recorded.
+   * - test that a success is recorded when another is live.
+   * - test that a failure is recorded.
+   * - test that a compliance state situation is properly handled.
+   */
+  /**
+   * @expected_exception InvalidArgumentException
+   */
+  public function testBatchWebhookProcessDoesNotProcessUnknownBatch() {
+    $wh = new CRM_Mailchimpsync_Page_BatchWebhook();
+    $wh->processWebhook([
+      'type' => 'batch_operation_completed',
+      'id' => '123456789a'
+    ]);
+  }
+  /**
+   */
+  public function testBatchWebhookCanLoadResponse() {
+    // We need fixture for a webhook.
+    $_ = $this->createConfig2();
+    $audience = $_->audience;
+    $cache = $_->cache_entry;
+    // Create mock batch.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = '123456789a';
+    $batch->mailchimp_list_id = 'list_1';
+    $batch->save();
+    // Create mock update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_batch_id = $batch->id;
+    $update->mailchimpsync_list_id = 'list_1';
+    $update->data = '{"status":"subscribed", "email_address":"contact1@example.com"}';
+    $update->save();
+
+    // Now mock the responses
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpBatchStatus('123456789a', [
+      'status' => 'finished',
+      'response_body_url' => 'https://example.com/batch-1-results',
+      'completed_at' => date('Y-m-d H:i:s'),
+      'submitted_at' => date('Y-m-d H:i:s'),
+      'finished_operations' => 1,
+      'errored_operations' => 0,
+      'total_operations' => 1,
+    ]);
+    $api->setMockMailchimpBatchResults('https://example.com/batch-1-results', [
+      'data' => [
+        'operation_id' => 'mailchimpsync_' . $update->id,
+        'status_code' => 200,
+        'data' => [
+          'email_address' => 'contact1@example.com',
+          'status' => 'subscribed',
+          'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+        ],
+      ]
+    ]);
+
+    // Call the thing we want to test.
+    $wh = new CRM_Mailchimpsync_Page_BatchWebhook();
+    $wh->processWebhook([
+      'type' => 'batch_operation_completed',
+      'data' => [ 'id' => '123456789a' ],
+    ]);
+
+    // Load the batch, make sure it's been updated.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = '123456789a';
+    $this->assertEquals(1, $batch->find(1));
+    $this->assertEquals('finished', $batch->status);
+    $this->assertEquals(1, $batch->finished_operations);
+    $this->assertEquals(0, $batch->errored_operations);
+    $this->assertEquals(1, $batch->total_operations);
+
+    // Load the update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_batch_id = $batch->id;
+    $update->mailchimpsync_list_id = 'list_1';
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(1, $update->completed);
+    $this->assertEquals(NULL, $update->error_response);
+
+    // Load the cache item.
+    $cache_id = $cache->id;
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $cache_id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('ok', $cache->sync_status);
+
+    $this->dumpTables();
+  }
   // Test helpers.
   /**
    * Set up simple config, return an audience for it.
@@ -770,10 +865,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     }
   }
   public function dumpTables() {
-    print "\n\nContacts: \n" . $this->dumpSql("SELECT id, first_name FROM civicrm_contact ORDER BY id") . "\n";
-    print "Emails: \n" . $this->dumpSql("SELECT id, contact_id, email FROM civicrm_email ORDER BY contact_id") . "\n\n";
-    print "Cache: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_cache", [], JSON_PRETTY_PRINT) . "\n\n";
-    print "Updates: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_update") . "\n\n";
+    print "\nContacts: \n" . $this->dumpSql("SELECT id, first_name FROM civicrm_contact ORDER BY id") . "\n";
+    print "Emails: \n" . $this->dumpSql("SELECT id, contact_id, email FROM civicrm_email ORDER BY contact_id") . "\n";
+    print "Cache: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_cache", [], JSON_PRETTY_PRINT) . "\n";
+    print "Updates: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_update") . "\n";
+    print "Batches: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_batch") . "\n";
   }
   public function dumpSql($sql, $params=[], $pretty=FALSE) {
     $results = CRM_Core_DAO::executeQuery($sql, $params)->fetchAll();

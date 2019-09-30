@@ -98,5 +98,32 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
     ]);
     return $guzzleClient;
   }
+  /**
+   * Download the resource URL to an uncompressed tar file.
+   */
+  public function downloadBatchResponse($url) {
+
+    $filename = CRM_Utils_File::tempnam('mailchimsync-batch-response-');
+    try {
+      $guzzleClient = new Client([
+        'http_errors' => TRUE, // Get exceptions from guzzle requests.
+      ]);
+      $guzzleClient->request('get', $url, [
+        'headers' => ['Accept-Encoding' => 'gzip'],
+        'decode_content' => TRUE,
+        'sink' => $filename,
+      ]);
+    }
+    catch (Exception $e) {
+      if (file_exists($filename)) {
+        // Clean up.
+        unlink($filename);
+      }
+      throw $e;
+    }
+
+    return $filename;
+  }
+
 }
 

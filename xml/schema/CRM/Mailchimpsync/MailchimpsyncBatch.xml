@@ -19,6 +19,13 @@
   </primaryKey>
 
   <field>
+    <name>mailchimp_list_id</name>
+    <type>varchar</type>
+    <length>32</length>
+    <comment>We batch per list/audience</comment>
+  </field>
+
+  <field>
     <name>mailchimp_batch_id</name>
     <type>varchar</type>
     <length>32</length>

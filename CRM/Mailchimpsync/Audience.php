@@ -600,6 +600,7 @@ class CRM_Mailchimpsync_Audience
       // Create a batch record.
       $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
       $batch->mailchimp_batch_id = $mailchimp_batch_id;
+      $batch->mailchimp_list_id = $this->mailchimp_list_id;
       // $batch->submitted_at = date('Y-m-d H:i:s');
       $batch->total_operations = count($requests);
       $batch->save();

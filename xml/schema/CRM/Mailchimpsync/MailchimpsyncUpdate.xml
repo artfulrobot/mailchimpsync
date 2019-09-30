@@ -55,5 +55,11 @@
     <required>true</required>
   </field>
 
+  <field>
+    <name>error_response</name>
+    <type>TEXT</type>
+    <comment>Set if the mailchimp update fails to whatever mailchimp returned.</comment>
+  </field>
+
 
 </table>

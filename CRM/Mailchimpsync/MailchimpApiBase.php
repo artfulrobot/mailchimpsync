@@ -4,7 +4,7 @@
  * Base class for Mailchimp API helper.
  *
  */
-class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
+abstract class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
 {
   const MAX_MEMBERS_COUNT = 1000;
 
@@ -94,4 +94,13 @@ class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpA
     }
     return $response['id'];
   }
+  /**
+   * Download the resource URL to an uncompressed tar file.
+   *
+   * @param string $url
+   *
+   * @return string filename to temporary file.
+   */
+  abstract public function downloadBatchResponse($url);
+
 }

@@ -84,6 +84,7 @@ CREATE TABLE `civicrm_mailchimpsync_batch` (
 
 
      `id` int unsigned NOT NULL AUTO_INCREMENT  COMMENT 'Unique MailchimpsyncBatch ID',
+     `mailchimp_list_id` varchar(32)    COMMENT 'We batch per list/audience',
      `mailchimp_batch_id` varchar(32)    COMMENT 'Mailchimp-supplied Batch ID',
      `status` varchar(32)    COMMENT 'Mailchimp-supplied status',
      `submitted_at` datetime    ,
@@ -145,7 +146,8 @@ CREATE TABLE `civicrm_mailchimpsync_update` (
      `mailchimpsync_cache_id` int unsigned    COMMENT 'FK to MailchimpsyncCache ID',
      `mailchimpsync_batch_id` int unsigned    COMMENT 'FK to Mailchimpsync Batch',
      `data` TEXT NOT NULL   ,
-     `completed` tinyint NOT NULL  DEFAULT 0  
+     `completed` tinyint NOT NULL  DEFAULT 0 ,
+     `error_response` TEXT    COMMENT 'Set if the mailchimp update fails to whatever mailchimp returned.' 
 ,
         PRIMARY KEY (`id`)
  
