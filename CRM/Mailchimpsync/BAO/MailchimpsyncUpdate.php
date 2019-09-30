@@ -1,17 +1,17 @@
 <?php
 use CRM_Mailchimpsync_ExtensionUtil as E;
 
-class CRM_Mailchimpsync_BAO_MailchimpsyncUpdates extends CRM_Mailchimpsync_DAO_MailchimpsyncUpdates {
+class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_MailchimpsyncUpdate {
 
   /**
-   * Create a new MailchimpsyncUpdates based on array-data
+   * Create a new MailchimpsyncUpdate based on array-data
    *
    * @param array $params key-value pairs
-   * @return CRM_Mailchimpsync_DAO_MailchimpsyncUpdates|NULL
+   * @return CRM_Mailchimpsync_DAO_MailchimpsyncUpdate|NULL
    *
   public static function create($params) {
-    $className = 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates';
-    $entityName = 'MailchimpsyncUpdates';
+    $className = 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdate';
+    $entityName = 'MailchimpsyncUpdate';
     $hook = empty($params['id']) ? 'create' : 'edit';
 
     CRM_Utils_Hook::pre($hook, $entityName, CRM_Utils_Array::value('id', $params), $params);

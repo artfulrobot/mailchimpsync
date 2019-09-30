@@ -468,11 +468,11 @@ function _mailchimpsync_civix_civicrm_entityTypes(&$entityTypes) {
       'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncCache',
       'table' => 'civicrm_mailchimpsync_cache',
     ),
-    'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates' => 
+    'CRM_Mailchimpsync_DAO_MailchimpsyncUpdate' => 
     array (
-      'name' => 'MailchimpsyncUpdates',
-      'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates',
-      'table' => 'civicrm_mailchimpsync_updates',
+      'name' => 'MailchimpsyncUpdate',
+      'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdate',
+      'table' => 'civicrm_mailchimpsync_update',
     ),
   ));
 }

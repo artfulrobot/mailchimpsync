@@ -12,6 +12,7 @@
 
 class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
 {
+  public $batches = [];
   /** @var array */
   public $mock_mailchimp_data;
   /**
@@ -37,10 +38,17 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
    *
    * Returns array.
    */
-  protected function request(string $method, string $path, array $query=[], array $data=[]) {
+  protected function request(string $method, string $path, array $options=[]) {
+    $query = $options['query'] ?? [];
+    $body = $options['body'] ?? [];
     if ($method === 'GET') {
       if (preg_match(';lists/([^/]+)/members$;', $path, $matches)) {
         return $this->mockGetListMembers($matches[1], $query);
+      }
+    }
+    elseif ($method === 'PUT') {
+      if ($path === 'batches') {
+        return $this->mockPutBatches($body);
       }
     }
     throw new Exception("Code not written to mock the request: ". json_encode(
@@ -48,7 +56,7 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
         'method' => $method,
         'path'   => $path,
         'query'  => $query,
-        'data'   => $data,
+        'data'   => $body,
       ], JSON_PRETTY_PRINT));
   }
   public function mockGetListMembers($list_id, $query) {
@@ -80,5 +88,15 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
 
     // The live API returns a decoded Array from the JSON body received from the API.
     return $body;
+  }
+  /**
+   */
+  public function mockPutBatches($data) {
+    $id = "batch_" . count($this->batches);
+    $this->batches[$id] = $data;
+    return [
+      'id' => $id,
+      // ...
+    ];
   }
 }

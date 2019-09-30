@@ -362,9 +362,9 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
    *
    * Various tests on reconciling the subscription group.
    *
-   * @dataProvider reconciliationProvider
+   * @dataProvider reconcileSubscriptionGroupDataProvider
    */
-  public function testReconciliation($data) {
+  public function testReconcileSubscriptionGroup($data) {
     $description = $data['description'] . "\n";
     $mailchimp_status = $data['mailchimp_status'];
     $mailchimp_updated = $data['mailchimp_updated'];
@@ -374,7 +374,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $audience = $this->createConfigFixture1AndGetAudience(TRUE);
 
     // Create one test contact.
-    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    $contact_1 = (int) civicrm_api3('Contact', 'create', [
+      'contact_type' => 'Individual',
+      'first_name' => 'test1',
+      'email' => 'contact1@example.com'])['id'];
 
     // Create cache record manually for our fixture.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
@@ -387,7 +390,6 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     }
     if ($civicrm_status) {
       $bao->civicrm_status = $civicrm_status;
-      $bao->civicrm_updated = $civicrm_updated;
       if ($civicrm_status === 'Added') {
         $bao->subscribeInCiviCRM($audience);
       }
@@ -403,6 +405,9 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
           $contacts, $audience->getSubscriptionGroup(), 'MCsync', 'Deleted');
         $bao->civicrm_status = 'Deleted';
       }
+      // Allow overriding the civicrm_updated for test.
+      $bao->civicrm_updated = $civicrm_updated;
+
     }
     $bao->save();
 
@@ -436,22 +441,12 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   }
 
   /**
-   * Provides test cases for testReconciliation
+   * Provides test cases for testReconcileSubscriptionGroup
    *
    */
-  public function reconciliationProvider() {
+  public function reconcileSubscriptionGroupDataProvider() {
     $today = date('Y-m-d') . 'T00:00:00Z';
     return [
-      [[
-        'description' => "Strange case (should never happen) where contact apparently exists nowhere",
-        'civicrm_status' => null,
-        'civicrm_updated' => null,
-        'mailchimp_status' => null,
-        'mailchimp_updated' => null,
-        'expected_group_status' => null,
-        'expected_mailchimp_updates' => [],
-      ]],
-
       [[
         'description' => "New contact at Mailchimp",
         'civicrm_status' => null,
@@ -468,7 +463,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'mailchimp_status' => null,
         'mailchimp_updated' => null,
         'expected_group_status' => 'Added',
-        'expected_mailchimp_updates' => ['status' => 'subscribed'],
+        'expected_mailchimp_updates' => ['email_address' => 'contact1@example.com', 'status' => 'subscribed'],
       ]],
       [[
         'description' => "Contacts both subscribed, civi later",
@@ -588,7 +583,143 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'expected_mailchimp_updates' => ['status'=>'subscribed'],
       ]],
 
+      [[
+        'description' => "Strange case (should never happen) where contact apparently exists nowhere",
+        'civicrm_status' => null,
+        'civicrm_updated' => null,
+        'mailchimp_status' => null,
+        'mailchimp_updated' => null,
+        'expected_group_status' => null,
+        'expected_mailchimp_updates' => [],
+      ]],
+
     ];
+  }
+  /**
+   *
+   */
+  public function testReconcileQueueItemQueuesUpdate() {
+
+    $_ = $this->createConfig2();
+    $cache_entry = $_->cache_entry;
+    $id = $cache_entry->id;
+    $audience = $_->audience;
+
+    // Call the thing we want to test:
+    $audience->reconcileQueueItem($cache_entry);
+
+    // Now check that we have an update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $this->assertEquals(1, $update->count(), "Expect one update in update table.");
+    $update->mailchimpsync_cache_id = $id;
+    $this->assertEquals(1, $update->find(TRUE), "Expected to find an update record but did not.");
+    $this->assertEquals(json_encode(['email_address' => 'contact1@example.com', 'status' => 'subscribed']), $update->data);
+    // Reload cache entry
+    $cache_entry = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_entry->id = $id;
+    $cache_entry->find(TRUE);
+    $this->assertEquals('live', $cache_entry->sync_status);
+
+  }
+  /**
+   * Pretty much duplicate of testReconcileQueueItemQueuesUpdate but at higher level.
+   */
+  public function testReconcileQueueProcessQueuesUpdate() {
+
+    $_ = $this->createConfig2();
+    $cache_entry = $_->cache_entry;
+    $id = $cache_entry->id;
+    $audience = $_->audience;
+
+    // Call the thing we want to test.
+    // We give it 60s to complete. It should take milliseconds but hey.
+    $audience->reconcileQueueProcess(60);
+
+    // Now check that we have an update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $this->assertEquals(1, $update->count(), "Expect one update in update table.");
+    $update->mailchimpsync_cache_id = $id;
+    $this->assertEquals(1, $update->find(TRUE), "Expected to find an update record but did not.");
+    $this->assertEquals(json_encode(['email_address' => 'contact1@example.com', 'status' => 'subscribed']), $update->data);
+    // Reload cache entry
+    $cache_entry = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_entry->id = $id;
+    $cache_entry->find(TRUE);
+    $this->assertEquals('live', $cache_entry->sync_status);
+
+  }
+  /**
+   */
+  public function testBatchSubmission() {
+
+    // Setup
+    $_ = $this->createConfig2();
+    $audience = $_->audience;
+    // Add a 2nd contact that's already known to both systems.
+    $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact2@example.com'])['id'];
+    // Create cache record manually for our fixture.
+    $cache_entry = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_entry->civicrm_contact_id = $contact_2;
+    $cache_entry->sync_status = 'todo';
+    $cache_entry->mailchimp_list_id = 'list_1';
+    $cache_entry->mailchimp_email = 'contact2@example.com';
+    $cache_entry->mailchimp_member_id = md5('contact2@example.com');
+    $cache_entry->mailchimp_status = 'unsubscribed';
+    $cache_entry->mailchimp_updated = '2000-01-01'; // old
+    $cache_entry->subscribeInCiviCRM($audience);
+    $cache_entry->save();
+
+
+    // Set up updates (this is tested in other tests)
+    $audience->reconcileQueueProcess();
+
+    // Call the thing we want to test.
+    $request_count = $audience->submitBatch();
+
+    // We expect one request.
+    $this->assertEquals(2, $request_count, "Expected two requests");
+
+    // We expect there to be one batch now.
+    $dao = new CRM_Mailchimpsync_DAO_MailchimpsyncBatch();
+    $this->assertEquals(1, $dao->count(), "Expected one batch.");
+    $dao->fetch();
+    $batch_id = $dao->id;
+
+    // We expect the update record to contain the ID of the batch.
+    $update_dao = new CRM_Mailchimpsync_DAO_MailchimpsyncUpdate();
+    $update_dao->mailchimpsync_batch_id = $batch_id;
+    $this->assertEquals(2, $update_dao->find(), "Expected the update rows to be linked to the batch.");
+
+    // We need the IDs from the update table.
+    $update_ids = array_keys($update_dao->fetchMap('id', 'id'));
+
+    // Check that the batch is correct.
+    $api = $audience->getMailchimpApi();
+    $this->assertEquals([
+      'batch_0' => [
+        'operations' => [
+          [
+            'method' => 'POST',
+            //'path' => '/lists/list_1/members/893149900bedab9c2dab6e8bbfebeea7',
+            'path' => '/lists/list_1/members',
+            'operation_id' => 'mailchimpsync_' . $update_ids[0],
+            'body' => [
+              'email_address' => 'contact1@example.com',
+              'status' => 'subscribed',
+            ]
+          ],
+          [
+            'method' => 'PUT',
+            'path' => '/lists/list_1/members/fc749d08d4b46319f7584a3483e7f5f2',
+            'operation_id' => 'mailchimpsync_' . $update_ids[1],
+            'body' => [
+              'email_address' => 'contact2@example.com',
+              'status' => 'subscribed',
+            ]
+          ]
+        ]
+      ]
+    ], $api->batches, "Failed checking batches were created as expected.");
   }
   // Test helpers.
   /**
@@ -638,10 +769,46 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       }
     }
   }
-    public function dumpTables() {
-      print "\nContacts: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT id, first_name FROM civicrm_contact ORDER BY id")->fetchAll()) . "\n";
-      print "Emails: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT id, contact_id, email FROM civicrm_email ORDER BY contact_id")->fetchAll()) . "\n";
-      print "Cache: \n" . json_encode(CRM_Core_DAO::executeQuery("SELECT mailchimp_email, civicrm_contact_id FROM civicrm_mailchimpsync_cache")->fetchAll()) . "\n";
+  public function dumpTables() {
+    print "\n\nContacts: \n" . $this->dumpSql("SELECT id, first_name FROM civicrm_contact ORDER BY id") . "\n";
+    print "Emails: \n" . $this->dumpSql("SELECT id, contact_id, email FROM civicrm_email ORDER BY contact_id") . "\n\n";
+    print "Cache: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_cache", [], JSON_PRETTY_PRINT) . "\n\n";
+    print "Updates: \n" . $this->dumpSql("SELECT * FROM civicrm_mailchimpsync_update") . "\n\n";
+  }
+  public function dumpSql($sql, $params=[], $pretty=FALSE) {
+    $results = CRM_Core_DAO::executeQuery($sql, $params)->fetchAll();
+    $output = '';
+    foreach ($results as $row) {
+      $output .= json_encode($row, $pretty) . "\n";
     }
+    return "$output\n";
+  }
 
+  /**
+   * DRY used in testBatchSubmission
+   *
+   * - Sets up fixture 1 with group
+   * - create a test contact
+   * - adds contact to test subscription group
+   *
+   * @return StdClass with props:
+   * - CRM_Mailchimpsync_Audience audience
+   * - CRM_Mailchimpsync_BAO_MailchimpsyncCache cache_entry
+   */
+  protected function createConfig2() {
+    // Check that mailchimp updates get added to the mailchimpsync_update table.
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+    // Create one test contact.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    // Create cache record manually for our fixture.
+    $cache_entry = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_entry->civicrm_contact_id = $contact_1;
+    $cache_entry->mailchimp_list_id = 'list_1';
+    $cache_entry->subscribeInCiviCRM($audience);
+    $cache_entry->save();
+    return (object) [
+      'audience' => $audience,
+      'cache_entry' => $cache_entry,
+    ];
+  }
 }

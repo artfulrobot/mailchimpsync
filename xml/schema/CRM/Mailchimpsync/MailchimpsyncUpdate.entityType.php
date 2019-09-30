@@ -4,8 +4,8 @@
 return array (
   0 => 
   array (
-    'name' => 'MailchimpsyncUpdates',
-    'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdates',
-    'table' => 'civicrm_mailchimpsync_updates',
+    'name' => 'MailchimpsyncUpdate',
+    'class' => 'CRM_Mailchimpsync_DAO_MailchimpsyncUpdate',
+    'table' => 'civicrm_mailchimpsync_update',
   ),
 );

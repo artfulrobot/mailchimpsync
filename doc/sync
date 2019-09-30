@@ -1,7 +1,7 @@
 digraph A {
   graph [fontname="Lato", bgcolor="#eeeeee"]
   node [fontname="Lato", shape=rectangle, style="filled" fillcolor="white", color="#444444"]
-  edge [fontname="Lato"]
+  edge [fontname="Lato", labeldistance=2]
 
   start [label="Start Fetch", style="filled,rounded", fillcolor="#ffee88"]
 
@@ -45,11 +45,11 @@ digraph A {
     onlyCiviUpdates->p9 [taillabel="Yes" labeldistance=2]
     p9 [label="Make CiviCRM updates\nSet sync_status:ok"]
 
-    p9->mailchimpupdates1 
+    p9->mailchimpupdates1
     mailchimpupdates1 [label="Mailchimp\nupdates\nneeded?", shape=diamond]
 
       mailchimpupdates1->p10 [taillabel="Yes" labeldistance=2]
-      p10 [label="Store update\nSet sync_status: pending"]
+      p10 [label="Store update\nSet sync_status: live"]
 
 
     onlyCiviUpdates->mailchimpupdates1 [taillabel="No" labeldistance=2]
@@ -77,11 +77,43 @@ digraph A {
 
   end3 [label="End Batch updates", style="filled,rounded", fillcolor="#ffee88"]
 
-  p10:e->batchTable:w
-  batchTable [label="Batch updates table"]
-  batchTable->p11
+  start4 [label="Batches webhook", style="filled,rounded", fillcolor="#ffee88"]
 
-  { rank=same; start; start2; start3} 
-  { rank=same; end1; end2; end3} 
+  start4->bwh1
+  bwh1 [label="Uncompress; untar"]
+  bwh1->bwh2
+
+  bwh2 [label="Loop responses."]
+  bwh2->bwh3
+
+  bwh3 [label="Success?" shape=diamond]
+
+    bwh3:w->bwh4 [taillabel="Yes"]
+    bwh4 [label="Set cache table status 'ok'"]
+    bwh4->bwh9:n [dir="none"]
+
+    bwh3:e->bwh5a [taillabel="No"]
+    bwh5a [label="Store response in updates table"]
+    bwh5a->bwh5b
+    bwh5b [label="Manual\nunsubscribe?" shape=diamond]
+      bwh5b->bwh6 [taillabel="Yes"]
+      bwh6 [label="Set cache table status 'redo' ??"]
+      bwh6->bwh7
+      bwh7 [label="Add alternate update to batch table."]
+      bwh7 ->bwh9:n [dir="none"]
+
+      bwh5b->bwh8 [taillabel="No"]
+      bwh8 [label="Set cache table status 'fail'"]
+      bwh8->bwh9:n [dir="none"]
+
+
+
+  bwh9 [label="Loop until done"]
+  bwh9:s->end4b:n
+  bwh9:w->bwh2:w [style="dashed"]
+  end4b [label="Batches webhook end", style="filled,rounded", fillcolor="#ffee88"]
+
+  { rank=same; start; start2; start3; start4}
+  { rank=same; end1; end2; end3; end4b}
   { rank=same; p11; lockCheck; p8}
 }

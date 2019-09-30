@@ -62,7 +62,7 @@
 
 SET FOREIGN_KEY_CHECKS=0;
 
-DROP TABLE IF EXISTS `civicrm_mailchimpsync_updates`;
+DROP TABLE IF EXISTS `civicrm_mailchimpsync_update`;
 DROP TABLE IF EXISTS `civicrm_mailchimpsync_cache`;
 DROP TABLE IF EXISTS `civicrm_mailchimpsync_batch`;
 
@@ -119,7 +119,7 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
      `mailchimp_data` text    COMMENT 'Json data',
      `civicrm_data` text    COMMENT 'Json data',
      `civicrm_contact_id` int unsigned    COMMENT 'FK to Contact',
-     `sync_status` varchar(4)   DEFAULT 'todo' COMMENT 'ok|todo|live' 
+     `sync_status` varchar(4)   DEFAULT 'todo' COMMENT 'ok|todo|live|redo|fail' 
 ,
         PRIMARY KEY (`id`)
  
@@ -133,15 +133,15 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
 
 -- /*******************************************************
 -- *
--- * civicrm_mailchimpsync_updates
+-- * civicrm_mailchimpsync_update
 -- *
 -- * FIXME
 -- *
 -- *******************************************************/
-CREATE TABLE `civicrm_mailchimpsync_updates` (
+CREATE TABLE `civicrm_mailchimpsync_update` (
 
 
-     `id` int unsigned NOT NULL AUTO_INCREMENT  COMMENT 'Unique MailchimpsyncUpdates ID',
+     `id` int unsigned NOT NULL AUTO_INCREMENT  COMMENT 'Unique MailchimpsyncUpdate ID',
      `mailchimpsync_cache_id` int unsigned    COMMENT 'FK to MailchimpsyncCache ID',
      `mailchimpsync_batch_id` int unsigned    COMMENT 'FK to Mailchimpsync Batch',
      `data` TEXT NOT NULL   ,
@@ -150,7 +150,7 @@ CREATE TABLE `civicrm_mailchimpsync_updates` (
         PRIMARY KEY (`id`)
  
  
-,          CONSTRAINT FK_civicrm_mailchimpsync_updates_mailchimpsync_cache_id FOREIGN KEY (`mailchimpsync_cache_id`) REFERENCES `civicrm_mailchimpsync_cache`(`id`) ON DELETE SET NULL,          CONSTRAINT FK_civicrm_mailchimpsync_updates_mailchimpsync_batch_id FOREIGN KEY (`mailchimpsync_batch_id`) REFERENCES `civicrm_mailchimpsync_batch`(`id`) ON DELETE SET NULL  
+,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_cache_id FOREIGN KEY (`mailchimpsync_cache_id`) REFERENCES `civicrm_mailchimpsync_cache`(`id`) ON DELETE SET NULL,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_batch_id FOREIGN KEY (`mailchimpsync_batch_id`) REFERENCES `civicrm_mailchimpsync_batch`(`id`) ON DELETE SET NULL  
 )    ;
 
  

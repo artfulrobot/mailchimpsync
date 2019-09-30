@@ -335,7 +335,7 @@ class CRM_Mailchimpsync_Audience
 
     $sql = "
       INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id, sync_status)
-      SELECT %1 mailchimp_list_id, contact_id, 'todo' sync_status
+        SELECT %1 mailchimp_list_id, contact_id, 'todo' sync_status
       FROM civicrm_group_contact gc
       WHERE gc.group_id = $civicrm_subscription_group_id
             AND gc.status = 'Added'
@@ -350,36 +350,6 @@ class CRM_Mailchimpsync_Audience
     return $dao->affectedRows();
 
 
-    // Foreach contact Id we'll need to know whether there's a cache record for
-    // it. If we did this in a loop we'd be creating N queries where N is the
-    // number of contacts ever in the group.
-
-
-    /*
-    // Select the most recent subscription history line for each contact in the group.
-    $sql = "SELECT contact_id, date, status FROM civicrm_subscription_history h
-      WHERE group_id = $civicrm_subscription_group_id
-      AND NOT EXISTS (
-        SELECT id
-          FROM civicrm_subscription_history h2
-          WHERE h2.group_id = $civicrm_subscription_group_id
-                AND h2.contact_id = h1.contact_id
-                AND h2.date < h1.date
-      )";
-    $dao = CRM_Core_DAO::executeQuery($sql);
-    while ($dao->fetch()) {
-      if (!isset($known_contacts[$dao->contact_id])) {
-        if ($dao->status === 'Added') {
-          // Found a contact that needs to be created at Mailchimp.
-        }
-      }
-    }
-
-    // Instead we'll cache the contats in this list in RAM.
-    $known_contacts = CRM_Core_DAO::executeQuery('SELECT civicrm_contact_id contact_id FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1')
-      ->fetchMap('contact_id', 'contact_id');
-
-     */
   }
 
   /**
@@ -426,20 +396,44 @@ class CRM_Mailchimpsync_Audience
     $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
     $dao->mailchimp_list_id = $this->getListId();
     $dao->sync_status = 'todo';
-    $count = $dao->find();
+    $ids = CRM_Core_DAO::executeQuery(
+      'SELECT id FROM civicrm_mailchimpsync_cache WHERE sync_status = "todo" AND mailchimp_list_id = %1',
+      [1 => [$this->getListId(), 'String']]
+    )->fetchMap('id', 'id');
 
     $done = 0;
-
-    while ($dao->fetch() && (!$stop_time || (time() < $stop_time))) {
+    foreach ($ids as $id) {
+      if ($stop_time && (time() > $stop_time)) {
+        // Time to stop.
+        break;
+      }
+      $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+      $dao->id = $id;
+      $dao->find(TRUE);
       $this->reconcileQueueItem($dao);
+      $done++;
     }
+    /* This loop did not work. I think because the dao object gets updated.
+    $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $dao->mailchimp_list_id = $this->getListId();
+    $dao->sync_status = 'todo';
+    $ids = CRM_Core_DAO::executeQuery(
+      'SELECT id FROM civicrm_mailchimpsync_cache WHERE sync_status = "todo" AND mailchimp_list_id = %1',
+      [1 => [$this->getListId(), 'String']]
+    )->fetchMap('id', 'id');
 
-    return ['done' => $done, 'count' => $count];
+    $done = 0;
+    while ($dao->fetch() && (!$stop_time || (time() < $stop_time))) {
+      $this->reconcileQueueItem(clone($dao));
+    }
+     */
+
+    return ['done' => $done, 'count' => count($ids)];
   }
   /**
    * Reconcile a single item from the cache table.
    *
-   * This is where the real work is done.
+   * This will result in the item having status 'ok', or 'live' if mailchimp updates are queued.
    *
    * @param CRM_Mailchimpsync_DAO_MailchimpsyncCache $dao
    */
@@ -447,6 +441,24 @@ class CRM_Mailchimpsync_Audience
 
     $mailchimp_updates = [];
     $this->reconcileSubscriptionGroup($mailchimp_updates, $contact);
+    // @todo other reconcilation operations.
+
+    if ($mailchimp_updates) {
+      $contact->sync_status = 'live';
+      $contact->save();
+
+      // Queue a mailchimp update.
+      $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+      $update->mailchimpsync_cache_id = $contact->id;
+      $update->data = json_encode($mailchimp_updates);
+      $update->save();
+    }
+    else {
+      // Updates were not needed or have all been done on the CiviCRM side.
+      $contact->sync_status = 'ok';
+      $contact->save();
+    }
+
   }
 
   /**
@@ -495,10 +507,14 @@ class CRM_Mailchimpsync_Audience
         }
         else {
           switch ($contact->mailchimp_status) {
+          case null:
+            // Find best email to use to subscribe this contact.
+            $mailchimp_updates['email_address'] = $this->getBestEmailForNewContact($contact->civicrm_contact_id);
+            // deliberate fall through..
+
           case 'unsubscribed':
           case 'archived':
           case 'transactional':
-          case null:
             $mailchimp_updates['status'] = 'subscribed';
             break;
 
@@ -523,6 +539,81 @@ class CRM_Mailchimpsync_Audience
     }
   }
 
+  // The following methods deal with the batching phase.
+  /**
+   *
+   * Look for updates, submit up to 1000 at a time to the API.
+   *
+   * @return int number of requests sent.
+   */
+  public function submitBatch() {
+    $sql = "SELECT up.*, cache.mailchimp_email
+      FROM civicrm_mailchimpsync_update up
+        INNER JOIN civicrm_mailchimpsync_cache cache
+          ON up.mailchimpsync_cache_id = cache.id
+             AND cache.sync_status = 'live'
+             AND cache.mailchimp_list_id = %1
+      WHERE up.mailchimpsync_batch_id IS NULL
+      LIMIT 1000";
+    $params = [1 => [$this->mailchimp_list_id, 'String']];
+    $dao = CRM_Core_DAO::executeQuery($sql, $params);
+
+    $requests = [];
+    $url_stub = "/lists/$this->mailchimp_list_id/members";
+    $api = $this->getMailchimpApi();
+
+    // Create requests
+    while ($dao->fetch()) {
+      // Updates are stored with a degree of normalisation.
+      // We need to add in details and construct the URL.
+      $id = $dao->id;
+      $data = json_decode($dao->data, TRUE);
+
+      $requests[$id] = [
+        'operation_id' => 'mailchimpsync_' . $id,
+      ];
+
+      if (!$dao->mailchimp_email) {
+        // Contact was not found on Mailchimp. The $data should already
+        // include the email address.
+        $requests[$id] += [
+          'method'       => 'POST',
+          'path'         => $url_stub,
+        ];
+      }
+      else {
+        // Contact is already known at mailchimp, so we use mailchimp's email.
+        $data['email_address'] = $dao->mailchimp_email;
+        $requests[$id] += [
+          'method'       => 'PUT',
+          'path'         => "$url_stub/" . $api->getMailchimpMemberIdFromEmail($dao->mailchimp_email),
+        ];
+      }
+
+      $requests[$id]['body'] = $data;
+
+    }
+    if ($requests) {
+      // @todo consider small batches to be processed directly.
+      $mailchimp_batch_id = $api->submitBatch($requests);
+
+      // Create a batch record.
+      $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+      $batch->mailchimp_batch_id = $mailchimp_batch_id;
+      // $batch->submitted_at = date('Y-m-d H:i:s');
+      $batch->total_operations = count($requests);
+      $batch->save();
+
+      // Update the updates table to 'claim' these records under this batch.
+      $batch_id = (int) $batch->id;
+      $sql = "UPDATE civicrm_mailchimpsync_update SET mailchimpsync_batch_id = $batch_id
+              WHERE id IN (" . implode(',', array_keys($requests)) .");";
+      CRM_Core_DAO::executeQuery($sql);
+    }
+
+    return count($requests);
+  }
+
   // utility methods
   /**
    * Fetches the appropriate API object for this list.
@@ -531,5 +622,28 @@ class CRM_Mailchimpsync_Audience
    */
   public function getMailchimpApi() {
     return CRM_Mailchimpsync::getMailchimpApi($this->config['apiKey']);
+  }
+  /**
+   * Finds the best email address
+   *
+   * 'bulk mail' wins, then primary, then any old one.
+   *
+   *
+   * @throws InvalidArgumentException if can't find an email.
+   * @param int $contact_id
+   * @return string email address
+   */
+  public function getBestEmailForNewContact($contact_id) {
+   $sql = "SELECT email
+              FROM civicrm_email e
+             WHERE contact_id = %1 AND e.on_hold = 0 AND email IS NOT NULL AND email != ''
+          ORDER BY is_bulkmail DESC, is_primary DESC
+             LIMIT 1";
+    $params = [1 => [$contact_id, 'Integer']];
+    $email = CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
+    if (!$email) {
+      throw new InvalidArgumentException("Failed to find email address for contact $contact_id");
+    }
+    return $email;
   }
 }

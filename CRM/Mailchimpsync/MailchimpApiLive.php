@@ -42,15 +42,21 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
    * @throws CRM_Mailchimpsync_RequestErrorException
    * @throws CRM_Mailchimpsync_NetworkErrorException
    *
+   * @param string Method, e.g. GET
+   * @param string path, e.g. lists/aabbccdd/members
+   * @param array options, can contain keys:
+   * - query: query params (can be array of key value pairs)
+   * - body: body data (typically an array)
+   *
    * @return array
    */
-  protected function request(string $method, string $path, array $query=[], array $data=[]) {
+  protected function request(string $method, string $path, array $options=[]) {
     $params = [];
-    if (!empty($query)) {
-      $params['query'] = $query;
+    if (!empty($options['query'])) {
+      $params['query'] = $options['query'];
     }
-    if (!empty($data)) {
-      $params['json'] = $data;
+    if (!empty($options['body'])) {
+      $params['data'] = $options['body'];
     }
     try {
       $response = $this->getGuzzleClient()->request($method, $path, $params);

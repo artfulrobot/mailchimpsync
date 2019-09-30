@@ -1,7 +1,8 @@
 <?php
 /**
  *
- * Base class.
+ * Base class for Mailchimp API helper.
+ *
  */
 class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
 {
@@ -43,7 +44,7 @@ class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpA
    * @param string $email
    * @return string
    */
-  public function getMailchimpMemberIdFromEmail($email) {
+  public static function getMailchimpMemberIdFromEmail($email) {
     $strtolower = function_exists('mb_strtolower') ? 'mb_strtolower' : 'strtolower';
     return md5($strtolower($email));
   }
@@ -52,6 +53,45 @@ class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpA
    * Make GET request.
    */
   public function get(string $path, array $query=[]) {
-    return $this->request('GET', $path, $query);
+    return $this->request('GET', $path, ['query' => $query]);
+  }
+  /**
+   * Make POST request.
+   */
+  public function post(string $path, $options=[]) {
+    return $this->request('POST', $path, $options);
+  }
+  /**
+   * Make PATCH request.
+   */
+  public function patch(string $path, array $options=[]) {
+    return $this->request('PATCH', $path, $options);
+  }
+  /**
+   * Make PUT request.
+   */
+  public function put(string $path, array $options=[]) {
+    return $this->request('PUT', $path, $options);
+  }
+  /**
+   * Make DELETE request.
+   */
+  public function delete(string $path, array $options=[]) {
+    return $this->request('DELETE', $path, $options);
+  }
+  /**
+   * Wrapper around batch submission.
+   *
+   * @throws UnexpectedValueException if Mailchimp API fails us.
+   * @return String batch ID
+   */
+  public function submitBatch($requests) {
+    $response = $this->put('batches', ['body' => [
+      'operations' => array_values($requests),
+    ]]);
+    if (!$response['id']) {
+      throw new UnexpectedValueException("Submitting a batch failed to return a batch ID.");
+    }
+    return $response['id'];
   }
 }

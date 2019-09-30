@@ -95,7 +95,7 @@
     <type>varchar</type>
     <length>4</length>
     <default>'todo'</default>
-    <comment>ok|todo|live</comment>
+    <comment>ok|todo|live|redo|fail</comment>
   </field>
 
   <index>

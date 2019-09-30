@@ -34,7 +34,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
   public function subscriptionMostRecentlyUpdatedAtMailchimp() {
     return $this->mailchimp_updated
            && (!$this->civicrm_updated
-               || $this->mailchimp_updated > $this->civicrm_updated);
+               || strtotime($this->mailchimp_updated) > strtotime($this->civicrm_updated));
   }
   /**
    * Returns true if CiviCRM's last subscription group history date exceeds
@@ -48,7 +48,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
   public function subscriptionMostRecentlyUpdatedAtCiviCRM() {
     return ($this->civicrm_updated
             && (!$this->mailchimp_updated
-                || $this->mailchimp_updated <= $this->civicrm_updated));
+                || strtotime($this->mailchimp_updated) <= strtotime($this->civicrm_updated)));
   }
   /**
    * Returns TRUE if we consider the person to be subscribed at Mailchimp.
@@ -80,6 +80,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
     CRM_Contact_BAO_GroupContact::addContactsToGroup($contacts, $audience->getSubscriptionGroup(), 'MCsync');
     // Update (but do not save) our object.
     $this->civicrm_status = 'Added';
+    $this->civicrm_updated = date('Ymd\THis');
 
     return $this;
   }
@@ -97,6 +98,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
       $contacts, $audience->getSubscriptionGroup(), 'MCsync', 'Removed');
     // Update (but do not save) our object.
     $this->civicrm_status = 'Removed';
+    $this->civicrm_updated = date('Ymd\THis');
 
     return $this;
   }
