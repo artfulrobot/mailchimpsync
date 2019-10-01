@@ -50,24 +50,58 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
   /**
    * Set mock batch results data.
    *
+   * This has to create sometihng resembling a tar file.
+   * Nb. no standards are implemented, we only provide the data necessary for our parser.
+   *
+   * The data array is an array keyed by filenames. Filenames don't matter but
+   * mailchimp's are like 1234fed.json. The values are array structures that
+   * contain the contents of the file. This has an outer key of 'data' and within
+   * it is another array of arrays for each response.
+   *
+   * @param string $url
+   * @param array $data
+   *
    * @return CRM_Mailchimpsync_MailchimpApiMock (this)
    */
   public function setMockMailchimpBatchResults($url, $data) {
 
-    // We need to create a tar file(!)
+    // We need to create an awkward tar file(!) like Mailchimp does. Awkward
+    // because it cannot be processed by PHP's inbuilt tar opening functions
+    // thanks to paths that start ./
+
+    // Create initial directory chunk.
+    $tar = str_repeat("\x00", 512);
+    $tar = substr_replace($tar, './', 0, 2);
+    $tar[156] = '5'; // directory
+    $len_oct = '000000000000';
+    $tar = substr_replace($tar, $len_oct, 124, 12);
+
+    // Add files.
+    foreach ($data as $filename => $content) {
+      $tar .= $this->createMailchimpTarChunk("./$filename", $content);
+    }
+    // Add empty chunk that means end of tar file.
+    $tar .= str_repeat("\x00", 512);
+
+    $this->mock_mailchimp_batch_results[$url] = $tar;
+    return $this;
+  }
+  /**
+   * This creates a file as it might appear in a mailchimp tar file.
+   *
+   * Nb. no standards are implemented, we only provide the data necessary for our parser.
+   */
+  protected function createMailchimpTarChunk($filename, $data) {
     $data = json_encode($data);
     $len = strlen($data);
-    $filename = "doesnotmatter.json";
-    $blocks = ceil($len/512) + 2;
+    $blocks = ceil($len/512) + 1;
     $tar = str_repeat("\x00", $blocks*512);
     $tar = substr_replace($tar, $filename, 0, strlen($filename));
     $tar[156] = '1';
     $len_oct = str_pad(decoct($len), 12, '0', STR_PAD_LEFT);
     $tar = substr_replace($tar, $len_oct, 124, 12);
     $tar = substr_replace($tar, $data, 512, $len);
-
-    $this->mock_mailchimp_batch_results[$url] = $tar;
-    return $this;
+    return $tar;
   }
 
   /**

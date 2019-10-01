@@ -722,16 +722,6 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     ], $api->batches, "Failed checking batches were created as expected.");
   }
   /**
-   * Test that the batch webhook is processed OK.
-   *
-   * - test that the webhook page extracts, validates POST.
-   * - test that the request is fetched from the API, and the file loaded and parsed from the URL.
-   * - test that a success is recorded.
-   * - test that a success is recorded when another is live.
-   * - test that a failure is recorded.
-   * - test that a compliance state situation is properly handled.
-   */
-  /**
    * @expected_exception InvalidArgumentException
    */
   public function testBatchWebhookProcessDoesNotProcessUnknownBatch() {
@@ -743,44 +733,24 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   }
   /**
    */
-  public function testBatchWebhookCanLoadResponse() {
-    // We need fixture for a webhook.
-    $_ = $this->createConfig2();
-    $audience = $_->audience;
-    $cache = $_->cache_entry;
-    // Create mock batch.
-    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
-    $batch->mailchimp_batch_id = '123456789a';
-    $batch->mailchimp_list_id = 'list_1';
-    $batch->save();
-    // Create mock update.
-    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
-    $update->mailchimpsync_batch_id = $batch->id;
-    $update->mailchimpsync_list_id = 'list_1';
-    $update->data = '{"status":"subscribed", "email_address":"contact1@example.com"}';
-    $update->save();
+  public function testBatchWebhookCanProcessSuccessInSingleFile() {
+    $various = $this->batchWebhookSetup();
+    $cache = $various->cache_entry;
+    $audience = $various->audience;
+    $api = $audience->getMailchimpApi();
 
     // Now mock the responses
-    $api = $audience->getMailchimpApi();
-    $api->setMockMailchimpBatchStatus('123456789a', [
-      'status' => 'finished',
-      'response_body_url' => 'https://example.com/batch-1-results',
-      'completed_at' => date('Y-m-d H:i:s'),
-      'submitted_at' => date('Y-m-d H:i:s'),
-      'finished_operations' => 1,
-      'errored_operations' => 0,
-      'total_operations' => 1,
-    ]);
     $api->setMockMailchimpBatchResults('https://example.com/batch-1-results', [
+      'file_uno.json' => [
       'data' => [
-        'operation_id' => 'mailchimpsync_' . $update->id,
+        'operation_id' => 'mailchimpsync_' . $various->update_id,
         'status_code' => 200,
         'data' => [
           'email_address' => 'contact1@example.com',
           'status' => 'subscribed',
           'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
         ],
-      ]
+      ]]
     ]);
 
     // Call the thing we want to test.
@@ -801,8 +771,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Load the update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
-    $update->mailchimpsync_batch_id = $batch->id;
-    $update->mailchimpsync_list_id = 'list_1';
+    $update->id = $various->update_id;
     $this->assertEquals(1, $update->find(1));
     $this->assertEquals(1, $update->completed);
     $this->assertEquals(NULL, $update->error_response);
@@ -813,8 +782,288 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $cache->id = $cache_id;
     $this->assertEquals(1, $cache->find(1));
     $this->assertEquals('ok', $cache->sync_status);
+  }
+  /**
+   * For some reason Mailchimp's batch responses sometimes come in multiple tarred files.
+   */
+  public function testBatchWebhookCanProcessSuccessInMultipleFiles() {
+    $various = $this->batchWebhookSetup();
+    $cache = $various->cache_entry;
+    $audience = $various->audience;
+    $api = $audience->getMailchimpApi();
+    // Create second contact
+    $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact2@example.com'])['id'];
+    // Create second cache item.
+    $cache_entry_2 = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_entry_2->civicrm_contact_id = $contact_2;
+    $cache_entry_2->mailchimp_list_id = 'list_1';
+    $cache_entry_2->mailchimp_status = 'subscribed';
+    $cache_entry_2->mailchimp_updated = $this->a_week_ago;
+    $cache_entry_2->civicrm_status = 'Removed';
+    $cache_entry_2->civicrm_updated = $this->yesterday;
+    $cache_entry_2->sync_status = 'live';
+    $cache_entry_2->save();
+    $various->cache_entry_2_id=$cache_entry_2->id;
+    // Create second update
+    $update2 = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update2->mailchimpsync_batch_id = $various->batch_id;
+    $update2->mailchimpsync_cache_id = $cache_entry_2->id;
+    $update2->data = '{"status":"unsubscribed", "email_address":"contact2@example.com"}';
+    $update2->save();
+    $various->update_id2 = $update2->id;
+    // Adjust the response
+    $api->setMockMailchimpBatchStatus('123456789a', [
+      'status' => 'finished',
+      'response_body_url' => 'https://example.com/batch-1-results',
+      'completed_at' => date('Y-m-d H:i:s'),
+      'submitted_at' => $this->a_week_ago,
+      'finished_operations' => 2,
+      'errored_operations' => 0,
+      'total_operations' => 2,
+    ]);
 
-    $this->dumpTables();
+
+    $api->setMockMailchimpBatchResults('https://example.com/batch-1-results', [
+      'file_uno.json' => [
+        'data' => [
+          'operation_id' => 'mailchimpsync_' . $various->update_id,
+          'status_code' => 200,
+          'data' => [
+            'email_address' => 'contact1@example.com',
+            'status' => 'subscribed',
+            'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+          ],
+        ],
+      ],
+      'file_duo.json' => [
+        'data' => [
+          'operation_id' => 'mailchimpsync_' . $various->update_id2,
+          'status_code' => 200,
+          'data' => [
+            'email_address' => 'contact1@example.com',
+            'status' => 'subscribed',
+            'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+          ],
+        ]
+      ]
+    ]);
+
+    // Call the thing we want to test.
+    $wh = new CRM_Mailchimpsync_Page_BatchWebhook();
+    $wh->processWebhook([
+      'type' => 'batch_operation_completed',
+      'data' => [ 'id' => '123456789a' ],
+    ]);
+
+    // Load the batch, make sure it's been updated.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = '123456789a';
+    $this->assertEquals(1, $batch->find(1));
+    $this->assertEquals('finished', $batch->status);
+    $this->assertEquals(2, $batch->finished_operations);
+    $this->assertEquals(0, $batch->errored_operations);
+    $this->assertEquals(2, $batch->total_operations);
+
+    // Load the updates
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id;
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(1, $update->completed);
+    $this->assertEquals(NULL, $update->error_response);
+
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id2;
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(1, $update->completed);
+    $this->assertEquals(NULL, $update->error_response);
+
+    // Load the cache items.
+    $cache_id = $cache->id;
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $cache_id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('ok', $cache->sync_status);
+
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $various->cache_entry_2_id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('ok', $cache->sync_status);
+
+    //$this->dumpTables();
+  }
+  /**
+   * It's feasible that a cache entry has two updates pending.
+   *
+   * In this case we don't want to set the cache's sync_status to 'ok' until
+   * the 2nd one completes.
+   */
+  public function testBatchWebhookCanProcessSuccessWhen2UpdatesPending() {
+    $various = $this->batchWebhookSetup();
+    $cache = $various->cache_entry;
+    $audience = $various->audience;
+    $api = $audience->getMailchimpApi();
+
+    // Create 2nd batch
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = 'aabbccddee';
+    $batch->mailchimp_list_id = 'list_1';
+    $batch->save();
+    $various->batch_id_2 = $batch->id;
+
+    // Create second update on same cache record.
+    $update2 = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update2->mailchimpsync_batch_id = $various->batch_id_2;
+    $update2->mailchimpsync_cache_id = $various->cache_entry->id;
+    $update2->data = '{"status":"unsubscribed", "email_address":"contact1@example.com"}';
+    $update2->save();
+    $various->update_id2 = $update2->id;
+
+    $api->setMockMailchimpBatchResults('https://example.com/batch-1-results', [
+      'file_uno.json' => [
+        'data' => [
+          'operation_id' => 'mailchimpsync_' . $various->update_id,
+          'status_code' => 200,
+          'data' => [
+            'email_address' => 'contact1@example.com',
+            'status' => 'subscribed',
+            'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+          ],
+        ],
+      ],
+    ]);
+
+    // Call the thing we want to test.
+    $wh = new CRM_Mailchimpsync_Page_BatchWebhook();
+    $wh->processWebhook([
+      'type' => 'batch_operation_completed',
+      'data' => [ 'id' => '123456789a' ],
+    ]);
+
+    // Load the batch, make sure it's been updated.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = '123456789a';
+    $this->assertEquals(1, $batch->find(1));
+    $this->assertEquals('finished', $batch->status);
+    $this->assertEquals(1, $batch->finished_operations);
+    $this->assertEquals(0, $batch->errored_operations);
+    $this->assertEquals(1, $batch->total_operations);
+
+    // Load the 2nd batch, make sure it's not been updated.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = 'aabbccddee';
+    $this->assertEquals(1, $batch->find(1));
+    $this->assertEquals(NULL, $batch->status);
+    $this->assertEquals(0, $batch->finished_operations);
+
+    // Load the updates
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id;
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(1, $update->completed);
+    $this->assertEquals(NULL, $update->error_response);
+
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id2;
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(0, $update->completed);
+    $this->assertEquals(NULL, $update->error_response);
+
+    // Load the cache items.
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $various->cache_entry->id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('live', $cache->sync_status);
+
+    //$this->dumpTables();
+  }
+  /**
+   * If we try to subscribe someone and get an error about compliance,
+   * we can retry to set them 'pending' which causes Mailchimp itself to send
+   * them an email asking if they want to join the list.
+   *
+   */
+  public function testBatchWebhookHandlesComplianceFailures() {
+    $various = $this->batchWebhookSetup();
+    $cache = $various->cache_entry;
+
+    //Load the update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id;
+    $update->find(1);
+
+
+    // Call the thing we want to test:
+    $returned_error = [
+        'title' => 'Member In Compliance State',
+        // Mailchimp has some other bits here
+      ];
+    $update->handleMailchimpUpdatesResponse([
+      'status_code' => 400,
+      'data' => $returned_error,
+    ]);
+
+    // Check the updates.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_cache_id = $various->cache_entry->id;
+    $this->assertEquals(2, $update->find());
+    while ($update->fetch()) {
+      if ($update->id == $various->update_id) {
+        $this->assertEquals(1, $update->completed);
+        $this->assertEquals($returned_error, json_decode($update->error_response, TRUE));
+      }
+      else {
+        $this->assertEquals(0, $update->completed);
+        $data = json_decode($update->data, TRUE);
+        $this->assertEquals('pending', $data['status'] ?? '');
+      }
+    }
+
+    // Load the cache item.
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $various->cache_entry->id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('live', $cache->sync_status);
+
+    //$this->dumpTables();
+  }
+  /**
+   * If we try to subscribe someone and get an error not about compliance,
+   * we have to flag it as failed.
+   *
+   */
+  public function testBatchWebhookHandlesFailure() {
+    $various = $this->batchWebhookSetup();
+    $cache = $various->cache_entry;
+
+    //Load the update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id;
+    $update->find(1);
+
+    // Call the thing we want to test:
+    $returned_error = [
+        'title' => 'No way, this person hates you.',
+        // Mailchimp has some other bits here
+      ];
+    $update->handleMailchimpUpdatesResponse([
+      'status_code' => 400,
+      'data' => $returned_error,
+    ]);
+
+    // Check the updates.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->id = $various->update_id;
+    $this->assertEquals(1, $update->find(1));
+    $this->assertEquals(1, $update->completed);
+    $this->assertEquals($returned_error, json_decode($update->error_response, TRUE));
+
+    // Load the cache item.
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $various->cache_entry->id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('fail', $cache->sync_status);
+
+    //$this->dumpTables();
   }
   // Test helpers.
   /**
@@ -906,5 +1155,52 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       'audience' => $audience,
       'cache_entry' => $cache_entry,
     ];
+  }
+  /**
+   * DRY code
+   *
+   * @return StdClass with props:
+   * - audience
+   * - cache_entry
+   * - batch_id
+   * - update_id
+   */
+  protected function batchWebhookSetup() {
+    // We need fixture for a webhook.
+    $various = $this->createConfig2();
+    $audience = $various->audience;
+
+    // Create mock batch.
+    $batch = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+    $batch->mailchimp_batch_id = '123456789a';
+    $batch->mailchimp_list_id = 'list_1';
+    $batch->save();
+    $various->batch_id = $batch->id;
+
+    // Create mock update.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_batch_id = $batch->id;
+    $update->mailchimpsync_cache_id = $various->cache_entry->id;
+    $update->data = '{"status":"subscribed", "email_address":"contact1@example.com"}';
+    $update->save();
+    $various->update_id = $update->id;
+
+    // The cache item would be set 'live' by now.
+    $various->cache_entry->sync_status = 'live';
+    $various->cache_entry->save();
+
+    // Now mock the responses
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpBatchStatus('123456789a', [
+      'status' => 'finished',
+      'response_body_url' => 'https://example.com/batch-1-results',
+      'completed_at' => date('Y-m-d H:i:s'),
+      'submitted_at' => date('Y-m-d H:i:s'),
+      'finished_operations' => 1,
+      'errored_operations' => 0,
+      'total_operations' => 1,
+    ]);
+
+    return $various;
   }
 }
