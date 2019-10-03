@@ -13,6 +13,8 @@ class CRM_Mailchimpsync_Audience
   /** @var array */
   protected $config;
 
+  /** Cached mailchimpsync_audience_status_* value */
+  protected $status_cache;
 
   protected function __construct(string $list_id) {
     $this->mailchimp_list_id = $list_id;
@@ -69,35 +71,182 @@ class CRM_Mailchimpsync_Audience
     }
     return (int) $this->config['subscriptionGroup'];
   }
+  /**
+   * This function deals with the fetch and reconciliation phases of the sync.
+   *
+   * Things have to be completed in order, but we have to break it up into jobs
+   * that can run within a reasonable time limit. If called by a CLI script
+   * it will just all run through one after another, but otherwise it can be re-run
+   * and pick up where it left off.
+   *
+   * @param array $params with keys:
+   * - time_limit: stop after this number of seconds. Default is 1 week (assumed to basically mean no time limit).
+   * - since: a fixed since date. (Defaults to date last sync date) @todo
+   */
+  public function fetchAndReconcile($params) {
+    $params += ['time_limit' => 604800];
+    $stop_time = time() + $params['time_limit'];
+
+    // Run fetch first.
+    $remaining_time = $stop_time - time();
+    $this->mergeMailchimpData(['max_time' => $remaining_time]);
+
+    while ($remaining_time > 0) {
+      $status = $this->getStatus();
+      switch ($status['fetchAndReconcile'] ?? NULL) {
+      case NULL:
+      case 'fetch':
+        $this->mergeMailchimpData(['max_time' => $remaining_time]);
+        break;
+
+      case 'readyToFixContactIds':
+        // Assume these two are quick enough to run together as one; they're all SQL driven.
+        $this->populateMissingContactIds();
+        $stats = $this->removeInvalidContactIds();
+        $this->log("removeInvalidContactIds completed with stats: " . json_encode($stats));
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'is'     => 'readyToCreateNewContactsFromMailchimp',
+        ]);
+        break;
+
+      case 'readyToCreateNewContactsFromMailchimp':
+        $total = $this->createNewContactsFromMailchimp();
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'is'     => 'readyToAddCiviOnly',
+          'andLog' => "Added $total new contacts found in Mailchimp but not CiviCRM.",
+        ]);
+        break;
+
+      case 'readyToAddCiviOnly':
+        $total = $this->addCiviOnly();
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'is'     => 'readyToCopyCiviGroupStatus',
+          'andLog' => "Added $total contacts found in CiviCRM but not in Mailchimp.",
+        ]);
+        break;
+
+      case 'readyToCopyCiviGroupStatus':
+        $this->copyCiviCRMSubscriptionGroupStatus();
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'is'     => 'readyToReconcileQueue',
+          'andLog' => "Copied CiviCRM's subscription group update dates.",
+        ]);
+        break;
+
+      case 'readyToReconcileQueue':
+        $stats = $this->reconcileQueueProcess($remaining_time);
+        if ($stats['done'] == $stats['count']) {
+          $this->updateLock([
+            'for'    => 'fetchAndReconcile',
+            'is'     => 'fetch',
+            'andLog' => "Completed reconciliation of $stats[done] contacts.",
+          ]);
+        }
+        else {
+          $this->updateLock([
+            'for'    => 'fetchAndReconcile',
+            'is'     => 'readyToReconcileQueue',
+            'andLog' => "Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time.",
+          ]);
+        }
+        break;
+
+      default:
+        throw new Exception("Invalid lock: $status[fetchAndReconcile]");
+      }
+
+      // Update remaining time.
+      $remaining_time = $stop_time - time();
+    }
+
+    if ($remaining_time <= 0) {
+      $this->log('Stopping processing as out of time.');
+    }
+  }
   // The following methods deal with the 'fetch' phase
   /**
    * Merge subscriber data form Mailchimp into our table.
    *
    * @param array $params with keys:
    * - since    Only load things changed since this date. (optional)
+   * - max_time Don't continue to fetch another batch if it has already taken
+   * longer than this number of seconds.
+   *
    */
   public function mergeMailchimpData(array $params=[]) {
 
-    $api = $this->getMailchimpApi();
+    if (!$this->attemptToObtainLock([
+      'for' => 'fetchAndReconcile',
+      'to'  => 'fetch',
+      'if'  => 'readyToFetch',
+    ])) {
+      return;
+    }
 
-    $query = [
-      'count' => CRM_Mailchimpsync_MailchimpApiBase::MAX_MEMBERS_COUNT,
-      'offset' => 0,
-    ];
-    do {
-      $response = $api->get("lists/$this->mailchimp_list_id/members", $query);
+    // Q. how to continue at later offset???
+    try {
+      $status = $this->getStatus();
 
-      // Fetch (filtered) data from our mock_mailchimp_data array.
-      // Insert it into our cache table.
-      foreach ($response['members'] ?? [] as $member) {
-        $this->mergeMailchimpMember($member);
-      }
+      // 1 week max excution time, expected to be equivalent to no max time.
+      $params += ['max_time' => 60*60*24*7];
+      $stop_time = time() + $params['max_time'];
 
-      // Prepare to load next page.
-      $query['offset'] += CRM_Mailchimpsync_MailchimpApiBase::MAX_MEMBERS_COUNT;
+      $api = $this->getMailchimpApi();
 
-    } while ($response['total_items'] > $query['offset']);
+      $query = [
+        'count'  => $api->max_members_to_fetch,
+        'offset' => ($status['fetch']['offset'] ?? 0),
+      ];
 
+
+      do {
+        $this->log("fetchMergeMailchimpData: fetching $api->max_members_to_fetch records from offset $query[offset]");
+        $response = $api->get("lists/$this->mailchimp_list_id/members", $query);
+
+        // Fetch (filtered) data from our mock_mailchimp_data array.
+        // Insert it into our cache table.
+        foreach ($response['members'] ?? [] as $member) {
+          $this->mergeMailchimpMember($member);
+        }
+
+        // Prepare to load next page.
+        $query['offset'] += $api->max_members_to_fetch;
+
+        $more_to_fetch = $response['total_items'] - $query['offset'];
+
+        if ($more_to_fetch > 0) {
+          $this->updateAudienceStatusSetting(function(&$c) use ($query, $response) {
+            // Store current offset, total to do.
+            $c['fetch']['offset'] = $query['offset'];
+          });
+        }
+
+      } while ($more_to_fetch>0 && time() < $stop_time);
+    }
+    catch (Exception $e) {
+      // Release lock (to allow fetch to try again) before rethrowing.
+      $this->log('fetchMergeMailchimpData: ERROR: ' . $e->getMessage());
+      $this->updateLock(['for' => 'fetchAndReconcile', 'is' => 'readyToFetch']);
+      throw $e;
+    }
+
+    // Successful finish, we're now ready to reconcile.
+    if ($more_to_fetch>0) {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToFetch',
+        'andLog' => "fetchMergeMailchimpData: stopping but $more_to_fetch more to fetch" ]);
+    }
+    else {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToFixContactIds',
+        'andLog' => "fetchMergeMailchimpData: completed ($response[total_items] fetched). Ready to reconcile." ]);
+    }
   }
   /**
    * Copy data from mailchimp into our table.
@@ -149,7 +298,9 @@ class CRM_Mailchimpsync_Audience
 
     $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
 
-    return $dao->affectedRows();
+    $affected = $dao->affectedRows();
+    $this->log("Removed $affected stale CiviCRM Contact IDs");
+    return $affected;
   }
   /**
    * Try various techniques for finding an appropriate CiviCRM Contact ID from
@@ -392,7 +543,6 @@ class CRM_Mailchimpsync_Audience
   public function reconcileQueueProcess(int $max_time=0) {
     $stop_time = ($max_time > 0) ? time() + $max_time : FALSE;
 
-
     $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
     $dao->mailchimp_list_id = $this->getListId();
     $dao->sync_status = 'todo';
@@ -617,6 +767,31 @@ class CRM_Mailchimpsync_Audience
 
   // utility methods
   /**
+   * Get the status array for this audience.
+   *
+   * @param bool $reset_cache
+   */
+  public function getStatus($reset_cache=FALSE) {
+    if ($reset_cache || !$this->status_cache) {
+      $key = 'mailchimpsync_audience_status_' . $this->mailchimp_list_id;
+      $status = Civi::settings()->get($key);
+      if ($status && !is_array($status)) {
+        throw new InvalidArgumentException("Invalid JSON in setting: $key");
+      }
+      elseif (!$status) {
+        // Create initial default status.
+        $status = [
+          'locks' => [],
+          'log'   => [],
+          'fetch' => [],
+        ];
+      }
+      $this->status_cache = $status;
+    }
+
+    return $this->status_cache;
+  }
+  /**
    * Fetches the appropriate API object for this list.
    *
    * @return CRM_Mailchimpsync_Audience
@@ -646,5 +821,89 @@ class CRM_Mailchimpsync_Audience
       throw new InvalidArgumentException("Failed to find email address for contact $contact_id");
     }
     return $email;
+  }
+  public function log($message) {
+    $log = ['time' => date('Y-m-d H:i:s'), 'message' => $message];
+    // Update the config.
+    $this->updateAudienceStatusSetting(function(&$config) use ($log) {
+      $config['log'][] = $log;
+    });
+  }
+  /**
+   * Update setting using locks.
+   *
+   * @param callable $callback
+   *        This must take &$config as a parameter and alter it as needed.
+   *        If no changes are needed it should return FALSE
+   */
+  public function updateAudienceStatusSetting(Callable $callback) {
+
+    // Lock tables and ensure we have the latest data from db.
+    CRM_Core_DAO::executeQuery("LOCK TABLES civicrm_setting WRITE, civicrm_recurring_entity READ;");
+    $config = $this->getStatus(TRUE);
+
+    // Alter config via callback.
+    $changed = $callback($config);
+    if ($changed !== FALSE) {
+      // Store the changed status in settings.
+      $key = 'mailchimpsync_audience_status_' . $this->mailchimp_list_id;
+      Civi::settings()->set($key, $config);
+      $this->status_cache = $config;
+    }
+
+    // Unlock tables.
+    CRM_Core_DAO::executeQuery("UNLOCK TABLES;");
+    return $this;
+  }
+  /**
+   * Attempt to obtain a lock for this audience.
+   *
+   * @param array $params with keys:
+   * 'for' - the type of lock requested
+   * 'to' - the value to set the lock to
+   * 'if' - the lock will only be granted if the current lock status is this
+   *        (or there is no such lock)
+   * @return bool TRUE if lock obtained.
+   */
+  public function attemptToObtainLock($params) {
+    $lock_obtained = FALSE;
+    $purpose = $params['for'];
+    $required_status = $params['if'];
+    $intent = $params['to'];
+    $this->updateAudienceStatusSetting(function(&$status) use ($purpose, $required_status, $intent, &$lock_obtained){
+
+      if (!isset($status['locks'][$purpose])
+        || $status['locks'][$purpose] === $required_status
+      ) {
+        // Ok, we can lock it.
+        $status['locks'][$purpose] = $intent;
+        $lock_obtained = TRUE;
+      }
+      else {
+        // No changes to be made.
+        return FALSE;
+      }
+    });
+    return $lock_obtained;
+  }
+  /**
+   * Update a lock.
+   *
+   * @param array with keys:
+   * - for: the type of lock.
+   * - is: the final state.
+   * - andLog: log message (optional).
+   */
+  public function updateLock(array $params) {
+    $purpose = $params['for'];
+    $ready = $params['is'];
+    $message = $params['andLog'] ?? NULL;
+
+    $this->updateAudienceStatusSetting(function(&$config) use ($purpose, $ready, $message) {
+      $config['locks'][$purpose] = $ready;
+      if ($message) {
+        $config['log'][] = ['time' => date('Y-m-d H:i:s'), 'message' => $message];
+      }
+    });
   }
 }

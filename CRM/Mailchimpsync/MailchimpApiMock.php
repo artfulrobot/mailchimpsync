@@ -142,7 +142,7 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
 
     $body = [
       'list_id' => $list_id,
-      'total_items' => 0,
+      'total_items' => count($this->mock_mailchimp_data[$list_id]['members']),
       'members' => [],
       '_links' => [],
     ];

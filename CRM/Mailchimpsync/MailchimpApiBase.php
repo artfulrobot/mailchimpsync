@@ -6,8 +6,13 @@
  */
 abstract class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
 {
+  /** In Oct 2019, this is the maximum allowed members per request from Mailchimp. */
   const MAX_MEMBERS_COUNT = 1000;
 
+  /**
+   * This is used in place of the constant for testing purposes.
+   */
+  public $max_members_to_fetch = self::MAX_MEMBERS_COUNT;
   /** @var string */
   protected $api_key;
 

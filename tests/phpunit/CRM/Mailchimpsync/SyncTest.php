@@ -83,7 +83,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   /**
    * Check we have our special table that helps us with sync.
    */
-  public function testMergeMailchimpData() {
+  public function testMergeMailchimpDataSimple() {
 
     // Create simple config.
     $audience = $this->createConfigFixture1AndGetAudience();
@@ -104,9 +104,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     // Get audience for this list.
     $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
 
-    // We do this twice to make sure that existing records are updated;
-    // they will exist after the intial call.
-    for ($i=0; $i<2; ++$i) {
+    // We do this twice to make sure that existing records are updated if they exist.
+    // i.e. the first call will find some contacts not in civi and will add them,
+    // then the second call should find that those contacts already exist. We
+    // check that the counts are as expected.
+    foreach ([1, 2] as $i) {
       $audience->mergeMailchimpData();
       $this->assertExpectedCacheStats([
         'count' => 4,
@@ -115,7 +117,85 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'count_mailchimp_status_transactional' => 1,
         'count_mailchimp_status_pending' => 0,
       ]);
+      $status = $audience->getStatus();
+      $this->assertEquals('readyToReconcile', $status['locks']['fetchAndReconcile'], "On pass $i got wrong status.");
     }
+
+  }
+
+  /**
+   * Check members all fetched if it requires 2 batches.
+   */
+  public function testMergeMailchimpDataMultipleRuns() {
+
+    // Create simple config.
+    $audience = $this->createConfigFixture1AndGetAudience();
+
+    // Get the audience's API so we can provide fixture data.
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+
+    // Limit api's batch fetch.
+    $api->max_members_to_fetch = 2;
+
+    // It should take 2 runs to populate.
+    $audience->mergeMailchimpData();
+    $audience->mergeMailchimpData();
+    $this->assertExpectedCacheStats([
+      'count' => 4,
+      'count_mailchimp_status_subscribed' => 2,
+      'count_mailchimp_status_unsubscribed' => 1,
+      'count_mailchimp_status_transactional' => 1,
+      'count_mailchimp_status_pending' => 0,
+    ]);
+    $status = $audience->getStatus();
+    $this->assertEquals('readyToReconcile', $status['locks']['fetchAndReconcile']);
+
+  }
+
+  /**
+   * Check merge does not run if there's a lock in place.
+   */
+  public function testMergeMailchimpDataDoesNotRunIfLocked() {
+
+    // Create simple config.
+    $audience = $this->createConfigFixture1AndGetAudience();
+
+    // Get the audience's API so we can provide fixture data.
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+
+    // Get audience for this list.
+    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+
+    $this->assertTrue($audience->attemptToObtainLock([
+      'for' => 'fetchAndReconcile',
+      'to'  => 'fetch',
+      'if'  => 'readyToFetch',
+    ]), "Expected to be able to obtain a lock.");
+
+    $audience->mergeMailchimpData();
+    $status = $audience->getStatus();
+    $this->assertEquals('fetch', $status['locks']['fetchAndReconcile']);
 
   }
 
@@ -1072,6 +1152,9 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
    * @param return CRM_Mailchimpsync_Audience
    */
   protected function createConfigFixture1AndGetAudience($with_group = FALSE) {
+    // Clear out locks.
+    Civi::settings()->set("mailchimpsync_audience_status_list_1", NULL);
+
     if ($with_group) {
       $group_id = civicrm_api3('Group', 'create', [
         'name'       => "test_list_1",

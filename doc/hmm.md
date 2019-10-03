@@ -95,22 +95,37 @@ batches table, set their records to todo.
 
 5. (cron) Check mailchimp batches; remove from queue when done.
 
-## Locks
+## Locks and config
 
 Use config?
 
-    config.lists.<listID>.lock = {
-        queue_id, // 'mailchimpsync_' + <listID>
-        since: <datetime>, // If recent sync
-        jobs: [
-            mailchimpFetch: { started: <datetime>, completed: null|<datetime>, stats }
-            removeInvalidContactIds: ...
-            populateMissingContactIds: ...
-            createNewContactsFromMailchimp: ...
-            addCiviOnly: ...
-            reconcile,
-        ],
-    }
+```
+config.lists.<listID>.lock = {
+    queue_id, // 'mailchimpsync_' + <listID>
+    since: <datetime>, // If recent sync
+    jobs: [
+        mailchimpFetch: { started: <datetime>, completed: null|<datetime>, stats }
+        removeInvalidContactIds: ...
+        populateMissingContactIds: ...
+        createNewContactsFromMailchimp: ...
+        addCiviOnly: ...
+        reconcile,
+    ],
+}
+```
+
+Each list has it's own settings:
+- subscriptionGroupId
+- fetch:
+    - lastFetchedAt: null|datetime
+    - status: live|wait
+    - startedAt: null|datetime
+    - completedAt: null|datetime
+    - updatedAt: null|datetime
+    - log: []
+
+## Q. how is a process restartable by cron?
+
 
 Feels bit worrying putting fast changing data in a JSON structure, but maybe
 that's OK.

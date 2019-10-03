@@ -20,3 +20,17 @@ The sync process is complex and is made up of several asynchronous processes.
    Other failures are just logged.
 
 ![Flowchart diagram][./sync.svg]
+
+## Configuration
+
+After setting up the links between your CiviCRM subscription groups and
+Mailchimp Lists/Audiences you will need to start an initial sync of all
+contacts.
+
+`Audience::fetchAndReconcile` deals with running everything in order. Note
+that this should be called only as often as you want to be processing. If
+you call it all the time it will run constantly and eat your server
+resources for little gain. Hourly is probably reasonable.
+
+@todo add scheduled job wrapper for this.
+
