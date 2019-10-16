@@ -58,6 +58,12 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
     if (!empty($options['body'])) {
       $params['data'] = $options['body'];
     }
+    if (!empty($options['auth'])) {
+      $params['auth'] = $options['auth'];
+    }
+    else {
+      $params['auth'] = ['CiviCRM', $this->api_key];
+    }
     try {
       $response = $this->getGuzzleClient()->request($method, $path, $params);
     }

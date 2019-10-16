@@ -23,14 +23,26 @@ The sync process is complex and is made up of several asynchronous processes.
 
 ## Configuration
 
+To set up sync connections between Mailchimp audiences/lists and CiviCRM
+groups, please visit **Administer » System Status » Configure Mailchimp Sync**
+
 After setting up the links between your CiviCRM subscription groups and
 Mailchimp Lists/Audiences you will need to start an initial sync of all
 contacts.
 
-`Audience::fetchAndReconcile` deals with running everything in order. Note
-that this should be called only as often as you want to be processing. If
+### Fetch and reconcile
+
+The `Mailchimpsync.Fetchandreconcile` API job needs running regularly.
+
+This should be called only as often as you want to be processing. If
 you call it all the time it will run constantly and eat your server
 resources for little gain. Hourly is probably reasonable.
 
-@todo add scheduled job wrapper for this.
+By default this API action will try to process all lists within 5 minutes.
+You can specify the `max_time` (in seconds) to suit your environment and
+a specific `group_id` if you want to run it for a single subscription
+group.
+
+Behind the scenes, this API calls `Audience::fetchAndReconcile` for each
+list/audience which deals with running everything in order.
 

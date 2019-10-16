@@ -114,7 +114,30 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
     $query = $options['query'] ?? [];
     $body = $options['body'] ?? [];
     if ($method === 'GET') {
-      if (preg_match(';lists/([^/]+)/members$;', $path, $matches)) {
+      if ($path === '') {
+        return [
+          "account_name" => "Mock Account",
+          "email"        => "mailchimp@example.com",
+          "first_name"   => "Wilma",
+          "last_name"    => "Test",
+          "username"     => "wilma",
+        ];
+      }
+      elseif ($path === 'lists') {
+        return [
+          'lists' => [[
+              'id' => 'list_1',
+              'name' => 'Mock audience/list',
+              'stats' => [
+                'member_count' => 2,
+                'unsubscribed_count' => 1,
+                'cleaned_count' => 1,
+                'click_rate' => 0,
+                'open_rate' => 80,
+              ]
+          ]]];
+      }
+      elseif (preg_match(';lists/([^/]+)/members$;', $path, $matches)) {
         return $this->mockGetListMembers($matches[1], $query);
       }
       elseif (preg_match(';batches/([a-z0-9]{10})$;', $path, $matches)) {
@@ -146,7 +169,11 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       'members' => [],
       '_links' => [],
     ];
-    foreach ($this->mock_mailchimp_data[$list_id]['members'] as $member) {
+    foreach (array_slice(
+        $this->mock_mailchimp_data[$list_id]['members'],
+        $query['offset'] ?? 0,
+        $this->max_members_to_fetch)
+     as $member) {
       // @todo apply queries
       $body['members'][] = [
         'id'            => $this->getMailchimpMemberIdFromEmail($member['email']),

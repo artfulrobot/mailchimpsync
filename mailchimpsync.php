@@ -134,4 +134,31 @@ function mailchimpsync_civicrm_entityTypes(&$entityTypes) {
   _mailchimpsync_civix_civicrm_entityTypes($entityTypes);
 }
 
+/**
+ * Define a permission administer_mailchimpsync
+ *
+ * Implements hook_civicrm_permission
+ */
+function mailchimpsync_civicrm_permission(&$permissions) {
+  $permissions += [
+    'administer_mailchimpsync' => E::ts('Administer Mailchimpsync'),
+  ];
+}
+/**
+ * Implements hook_civicrm_navigationMenu().
+ *
+ * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_navigationMenu
+ */
+function mailchimpsync_civicrm_navigationMenu(&$menu) {
+  _mailchimpsync_civix_insert_navigation_menu($menu, 'Administer/System Settings', [
+    'label'      => E::ts('Configure Mailchimp Sync'),
+    'name'       => 'mailchimpsync_config',
+    'url'        => 'civicrm/a/#/mailchimpsync/config',
+    'permission' => 'administer_mailchimpsync',
+    'operator'   => 'OR',
+    'separator'  => 0,
+  ]);
+  _mailchimpsync_civix_navigationMenu($menu);
+}
+
 

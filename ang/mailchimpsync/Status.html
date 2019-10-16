@@ -1,0 +1,41 @@
+<div class="crm-container mcs-status">
+  <!--
+    Add ?angularDebug=1
+  <h1 crm-page-title>{{ts('About %1', {1: myContact.first_name + ' ' + myContact.last_name})}}</h1>
+-->
+  <h1 crm-page-title>{{ts('Mailchimpsync Status')}}</h1>
+  <div crm-ui-debug="mcsConfig"></div>
+  <div crm-ui-debug="mcsStatus"></div>
+
+    <!-- Overview ========================================================== -->
+    <div ng-show="view === 'overview'" >
+
+      <div ng-repeat="(listId, list) in mcsConfig.lists" >
+        <h2>{{ mailingGroups[list.subscriptionGroup].title }}</h2>
+        <p>Sync with Mailchimp audience: <strong>{{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</strong> on account <em>{{ mcsConfig.accounts[list.apiKey].account_name }}</em></p>
+        <p>Last sync: <em>{{ (mcsStatus[listId].lastSyncTime === null) ? 'Never' : mcsStatus[listId].lastSyncTime }}</em></p>
+        <p>
+          <span class="mcs-status-pill bad" ng-if="mcsStatus[listId].stats.fail > 0">{{mcsStatus[listId].stats.fail}} Failed</span>
+          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].stats.todo > 0">{{mcsStatus[listId].stats.live}} To do</span>
+          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].stats.live > 0">{{mcsStatus[listId].stats.live}} Waiting for Mailchimp updates</span>
+          <span class="mcs-status-pill good" ng-if="mcsStatus[listId].stats.ok > 0">{{mcsStatus[listId].stats.live}} In Sync</span>
+        </p>
+
+        <div ng-if="mcsStatus[listId].locks.fetchAndReconcile != 'readyToFetch'">
+          Currently running fetch and reconcile.
+        </div>
+
+
+        </div>
+        <div ng-if="mcsStatus[listId].fetch.since">
+        </div>
+      </div>
+
+    </div><!-- ends main overview-->
+
+
+  <form name="myForm" crm-ui-id-scope>
+  </form>
+
+</div>
+

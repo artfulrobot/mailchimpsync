@@ -9,3 +9,13 @@
 .mcs-config .row label { flex: 0 0 14rem; }
 .mcs-config .row .select2-container,
 .mcs-config .row input { flex: 1 1 auto; margin-bottom: 1rem; }
+.mcs-status-pill {
+  padding: 0 1rem;
+  border-radius: 4px;
+  margin-right: 1rem;
+  color: white;
+  background: #888;
+}
+.mcs-status-pill.good { background: #080; }
+.mcs-status-pill.meh { background: #fc0; }
+.mcs-status-pill.bad { background: #800; }

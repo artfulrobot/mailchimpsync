@@ -118,7 +118,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'count_mailchimp_status_pending' => 0,
       ]);
       $status = $audience->getStatus();
-      $this->assertEquals('readyToReconcile', $status['locks']['fetchAndReconcile'], "On pass $i got wrong status.");
+      $this->assertEquals('readyToFixContactIds', $status['locks']['fetchAndReconcile'], "On pass $i got wrong status.");
     }
 
   }
@@ -136,9 +136,9 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
-          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
-          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
-          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Wilma'  , 'lname' => 'Flintstone', 'email' => 'wilma@example.com'  , 'status' => 'subscribed'   , 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty'  , 'lname' => 'Rubble'    , 'email' => 'betty@example.com'  , 'status' => 'subscribed'   , 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney' , 'lname' => 'Rubble'    , 'email' => 'barney@example.com' , 'status' => 'unsubscribed' , 'last_changed' => $this->a_week_ago ],
           [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
         ],
       ],
@@ -149,8 +149,17 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $api->max_members_to_fetch = 2;
 
     // It should take 2 runs to populate.
-    $audience->mergeMailchimpData();
-    $audience->mergeMailchimpData();
+    $audience->mergeMailchimpData(['max_time' => 0]);
+    $this->assertExpectedCacheStats([
+      'count' => 2,
+      'count_mailchimp_status_subscribed' => 2,
+      'count_mailchimp_status_unsubscribed' => 0,
+      'count_mailchimp_status_transactional' => 0,
+      'count_mailchimp_status_pending' => 0,
+    ]);
+    $status = $audience->getStatus();
+    $this->assertEquals('readyToFetch', $status['locks']['fetchAndReconcile']);
+    $audience->mergeMailchimpData(['max_time' => 0]);
     $this->assertExpectedCacheStats([
       'count' => 4,
       'count_mailchimp_status_subscribed' => 2,
@@ -159,7 +168,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       'count_mailchimp_status_pending' => 0,
     ]);
     $status = $audience->getStatus();
-    $this->assertEquals('readyToReconcile', $status['locks']['fetchAndReconcile']);
+    $this->assertEquals('readyToFixContactIds', $status['locks']['fetchAndReconcile']);
 
   }
 
