@@ -1,0 +1,131 @@
+<div class="crm-container mcs-config">
+  <!--
+    Add ?angularDebug=1
+  <h1 crm-page-title>{{ts('About %1', {1: myContact.first_name + ' ' + myContact.last_name})}}</h1>
+-->
+  <h1 crm-page-title>{{ts('Mailchimpsync Config')}}</h1>
+  <div crm-ui-debug="mcsConfig"></div>
+  <div crm-ui-debug="mailingGroups"></div>
+  <form name="myForm" crm-ui-id-scope>
+
+    <!-- Overview ========================================================== -->
+    <div ng-show="view === 'overview'" >
+
+      <h2>{{ts('Audience-Group subcription syncs')}}</h2>
+      <p>{{ts('The following CiviCRM groups and Mailchimp Audiences are to be kept in sync')}}</p>
+      <table>
+        <thead>
+          <tr><th>{{ts('Mailchimp Audience')}}</th><th>{{ts('CiviCRM Group')}}</th><th>{{ts('Actions')}}</th></tr>
+        </thead>
+        <tbody>
+          <tr ng-repeat="(listId, list) in mcsConfig.lists" >
+            <td>{{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</td>
+            <td>{{ mailingGroups[list.subscriptionGroup].title }}</td>
+            <td><a href ng-click="listEdit(listId)">{{ts('Edit')}}</a>
+              |
+              <a href ng-click="listDelete(listId)">{{ts('Delete')}}</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <a href ng-click="listEdit()" >{{ts('Add new subscription sync')}}</a>
+
+      <h2>{{ts('Mailchimp Accounts')}}</h2>
+      <table>
+        <thead><tr><th>{{ts('Name')}}</th><th>{{ts('Username')}}</th><th>{{ts('Actions')}}</th></tr></thead>
+        <tbody>
+          <tr ng-repeat="(apiKey, details) in mcsConfig.accounts" >
+            <td>{{details.account_name}}</td>
+            <td>{{details.username}}</td>
+            <td><a href ng-click="accountEdit(apiKey)">{{ts('Edit')}}</a>
+              |
+              <a href ng-click="accountDelete(apiKey)">{{ts('Delete')}}</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <a href ng-click="accountEdit()" >{{ts('Add new account')}}</a>
+
+    </div><!-- ends main overview-->
+
+    <!-- Edit account ========================================================== -->
+    <div ng-show="view === 'editAccount'" >
+      <h2>{{ts('Edit Account')}}</h2>
+      <div crm-ui-debug="editData"></div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.apiKey" >{{ts('Mailchimp API Key')}}</label>
+        <input
+          crm-ui-id="editData.apiKey"
+          name="api_key"
+          ng-model="editData.apiKey"
+          class="crm-form-text"
+          placeholder="{{ts('Mailchimp API Key')}}"
+          />
+      </div>
+
+      <button ng-click="accountSave()" >{{ts('Save Account')}}</button>
+      <br />
+      <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
+
+    </div>
+
+    <!-- Edit audience/list ========================================================== -->
+    <div ng-show="view === 'editAudience'" >
+      <h2>{{ts('Edit Audience-Group subscription sync')}}</h2>
+      <div crm-ui-debug="editData"></div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.apiKey" >{{ts('Mailchimp account')}}</label>
+        <select
+          crm-ui-id="editData.apiKey"
+          ng-model="editData.apiKey"
+          crm-ui-select="{allowClear:false, width: '100%'}"
+          name="api_key"
+          class="crm-form-text"
+          placeholder="{{ts('Mailchimp API Key')}}"
+          >
+            <option ng-repeat="(apiKey, account) in mcsConfig.accounts"
+                    value="{{apiKey}}"
+                    >{{account.account_name}} ({{account.username}}) {{apiKey}}</select>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.groupId" >{{ts('CiviCRM Group')}}</label>
+        <select
+          crm-ui-id="editData.groupId"
+          ng-model="editData.groupId"
+          crm-ui-select="{allowClear:false, width: '100%'}"
+          name="group_id"
+          class="crm-form-text"
+          placeholder="{{ts('CiviCRM Group')}}"
+          >
+          <option ng-repeat="group in mailingGroups"
+                  value="{{group.id}}">
+            {{group.title}}
+          </option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.listId" >{{ts('Mailchimp List/Audience ID')}}</label>
+        <select
+          crm-ui-id="editData.listId"
+          ng-model="editData.listId"
+          crm-ui-select="{allowClear:false, width: '100%'}"
+          name="api_key"
+          class="crm-form-text"
+          placeholder="{{ts('Mailchimp List/Audience')}}"
+          >
+            <option ng-repeat="(listId, list) in mcsConfig.accounts[editData.apiKey].audiences || {}"
+                    value="{{listId}}"
+                    >{{list.name}} ({{listId}})</select>
+        </select>
+      </div>
+
+      <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
+      <button ng-click="listSave()" >{{ts('Save')}}</button>
+
+  </form>
+
+</div>

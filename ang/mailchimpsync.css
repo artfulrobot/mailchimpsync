@@ -1,0 +1,11 @@
+/* Add any CSS rules for Angular module "mailchimpsync" */
+
+.mcs-config {
+  box-sizing: border-box;
+}
+.mcs-config .row {
+  display:flex;
+}
+.mcs-config .row label { flex: 0 0 14rem; }
+.mcs-config .row .select2-container,
+.mcs-config .row input { flex: 1 1 auto; margin-bottom: 1rem; }
