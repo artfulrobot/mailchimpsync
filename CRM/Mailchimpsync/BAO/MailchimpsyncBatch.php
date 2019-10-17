@@ -6,9 +6,10 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
   /**
    * Called when we think a batch has completed.
    *
+   * @param array|null $data if not given, the batch status is fetched from the api
    * @throws InvalidArgumentException if the batch has not finished.
    */
-  public function processCompletedBatch() {
+  public function processCompletedBatch($data=NULL) {
 
     // First, fetch the batch status from the API. This ensures we download
     // from the correct URL. Without this, a spammer could POST malicious URLs
@@ -17,7 +18,11 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
     $audience = CRM_Mailchimpsync_Audience::newFromListId($this->mailchimp_list_id);
     $api = $audience->getMailchimpApi();
 
-    $data = $api->get("batches/$this->mailchimp_batch_id");
+    if (!$data) {
+      // Load the data from the API now.
+      $data = $api->get("batches/$this->mailchimp_batch_id");
+    }
+
     $status = ($data['status'] ?? '');
     if ($status !== 'finished') {
       throw new InvalidArgumentException("Batch $this->mailchimp_batch_id has not finished. Got status: $status");

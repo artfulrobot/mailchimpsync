@@ -91,7 +91,7 @@ abstract class CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_M
    * @return String batch ID
    */
   public function submitBatch($requests) {
-    $response = $this->put('batches', ['body' => [
+    $response = $this->post('batches', ['body' => [
       'operations' => array_values($requests),
     ]]);
     if (!$response['id']) {

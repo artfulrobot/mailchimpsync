@@ -10,6 +10,9 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
  * @see https://docs.civicrm.org/dev/en/latest/framework/api-architecture/
  */
 function _civicrm_api3_mailchimpsync_Getstatus_spec(&$spec) {
+  $spec['batches'] = [
+    'description' => 'If set, load batches status from Mailchimp API',
+  ];
 }
 
 /**
@@ -24,13 +27,31 @@ function _civicrm_api3_mailchimpsync_Getstatus_spec(&$spec) {
 function civicrm_api3_mailchimpsync_Getstatus($params) {
 
   $returnValues = [];
+  $batches = [];
 
+  if (!empty($params['batches'])) {
+    $batches = CRM_Mailchimpsync::fetchBatches();
+  }
   $config = CRM_Mailchimpsync::getConfig();
   foreach ($config['lists'] as $list_id => $details) {
     $audience = CRM_Mailchimpsync_Audience::newFromListId($list_id);
     $returnValues[$list_id] = $audience->getStatus();
     // Add in some other stats.
     $returnValues[$list_id]['stats'] = $audience->getStats();
+    if (!empty($batches[$list_id])) {
+      $returnValues[$list_id]['batches'] = $batches[$list_id];
+      $returnValues[$list_id]['stats']['batch_errored_operations'] = 0;
+      $returnValues[$list_id]['stats']['batch_finished_operations'] = 0;
+      $returnValues[$list_id]['stats']['batch_total_operations'] = 0;
+      foreach ($batches[$list_id] as $batch) {
+        foreach (['errored_operations','finished_operations','total_operations'] as $_) {
+          $returnValues[$list_id]['stats']["batch_$_"] += $batch[$_];
+        }
+      }
+      $returnValues[$list_id]['stats']['batch_pending_operations'] =
+        $returnValues[$list_id]['stats']['batch_total_operations']
+        - $returnValues[$list_id]['stats']['batch_finished_operations'];
+    }
   }
 
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Getstatus');

@@ -56,7 +56,7 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
       $params['query'] = $options['query'];
     }
     if (!empty($options['body'])) {
-      $params['data'] = $options['body'];
+      $params['json'] = $options['body'];
     }
     if (!empty($options['auth'])) {
       $params['auth'] = $options['auth'];
@@ -69,7 +69,7 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
     }
     catch (GuzzleHttp\Exception\ClientException $e) {
       // 4xx errors
-      throw new CRM_Mailchimpsync_RequestErrorException($e->getMessage(), $e->getCode());
+      throw new CRM_Mailchimpsync_RequestErrorException($e->getResponse()->getBody()->getContents(), $e->getCode());
     }
     catch (GuzzleHttp\Exception\TransferException $e) {
       // Everything else

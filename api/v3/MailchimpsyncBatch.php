@@ -45,3 +45,27 @@ function civicrm_api3_mailchimpsync_batch_delete($params) {
 function civicrm_api3_mailchimpsync_batch_get($params) {
   return _civicrm_api3_basic_get(_civicrm_api3_get_BAO(__FUNCTION__), $params);
 }
+/**
+ * MailchimpsyncBatch.process
+ *
+ * @param array $params
+ * @return array API result descriptor
+ * @throws API_Exception
+ */
+function civicrm_api3_mailchimpsync_batch_processcompleted($params) {
+  if (empty($params['id'])) {
+    throw new API_Exception('MailchimpsyncBatch.processCompleted requires id parameter');
+  }
+  $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+  $bao->id= $params['id'];
+  if (!$bao->find(1)) {
+    throw new API_Exception('MailchimpsyncBatch.processCompleted given id not found');
+  }
+  try {
+    $returnValues = $bao->processCompletedBatch();
+  }
+  catch (InvalidArgumentException $e) {
+    throw new API_Exception($e->getMessage());
+  }
+  return civicrm_api3_create_success($returnValues, $params, 'MailchimpsyncBatch', 'processCompleted');
+}

@@ -857,7 +857,7 @@ class CRM_Mailchimpsync_Audience
         ];
       }
 
-      $requests[$id]['body'] = $data;
+      $requests[$id]['body'] = json_encode($data);
 
     }
     if ($requests) {
@@ -917,16 +917,72 @@ class CRM_Mailchimpsync_Audience
 
     // Count of sync statuses.
     $params = [1 => [$this->mailchimp_list_id, 'String']];
-    $sql = "SELECT sync_status, COUNT(*) c FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1 GROUP BY sync_status";
-    $stats = CRM_Core_DAO::executeQuery($sql, $params)->fetchMap('sync_status', 'c');
+
+    $sql = "SELECT sync_status, COALESCE(mailchimp_status, 'missing') mailchimp_status, COALESCE(civicrm_status, 'missing') civicrm_status, COUNT(*) c
+      FROM civicrm_mailchimpsync_cache
+      WHERE mailchimp_list_id = %1
+      GROUP BY sync_status, mailchimp_status, civicrm_status";
+    $result = CRM_Core_DAO::executeQuery($sql, $params)->fetchAll();
+    $stats = [
+      'failed' => 0,
+      'subscribed_at_mailchimp' => 0,
+      'subscribed_at_civicrm' => 0,
+      'to_add_to_mailchimp' => 0,
+      'cannot_subscribe' => 0,
+      'to_remove_from_mailchimp' => 0,
+      'weird' => [],
+    ];
+    foreach ($result as $row) {
+      if ($row['sync_status'] === 'fail') {
+        if ($row['civicrm_status'] === 'Added') {
+          $stats['cannot_subscribe'] += $row['c'];
+          $stats['subscribed_at_civicrm'] += $row['c'];
+        }
+        else {
+          $stats['failed'] += $row['c'];
+        }
+      }
+      elseif ($row['sync_status'] === 'live') {
+        // This means we're waiting to update mailchimp
+
+        if ($row['civicrm_status'] === 'Added') {
+          $stats['subscribed_at_civicrm'] += $row['c'];
+
+          if ($row['mailchimp_status'] !== 'subscribed') {
+            $stats['to_add_to_mailchimp'] += $row['c'];
+          }
+          else {
+            $stats['weird'][] = $row;
+          }
+        }
+        else {
+          // not added at civi, and updating mailchimp? Must be an unsubscribe.
+          $stats['to_remove_from_mailchimp'] += $row['c'];
+        }
+      }
+      elseif ($row['sync_status'] === 'ok') {
+        // In sync, both subscribed or both unsubscribed
+        if ($row['civicrm_status'] === 'Added') {
+          // Both subscribed.
+          $stats['subscribed_at_civicrm'] += $row['c'];
+          $stats['subscribed_at_mailchimp'] += $row['c'];
+        }
+        else {
+          $stats['weird'][] = $row;
+        }
+      }
+      else {
+          $stats['weird'][] = $row;
+      }
+    }
 
     $sql = 'SELECT COUNT(*) c FROM civicrm_mailchimpsync_update up INNER JOIN civicrm_mailchimpsync_cache c ON c.mailchimp_list_id = %1 AND up.mailchimpsync_cache_id = c.id
       WHERE up.completed = 0';
-    $stats['mailchimp_updates_pending'] = CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
+    $stats['mailchimp_updates_pending'] = (int) CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
 
     $sql = 'SELECT COUNT(*) c FROM civicrm_mailchimpsync_update up INNER JOIN civicrm_mailchimpsync_cache c ON c.mailchimp_list_id = %1 AND up.mailchimpsync_cache_id = c.id
       WHERE up.completed = 0 AND up.mailchimpsync_batch_id IS NULL';
-    $stats['mailchimp_updates_unsubmitted'] = CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
+    $stats['mailchimp_updates_unsubmitted'] = (int) CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
 
     return $stats;
   }

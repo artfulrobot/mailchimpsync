@@ -43,4 +43,55 @@ class CRM_Mailchimpsync
   public static function setConfig($config) {
     Civi::settings()->set('mailchimpsync_config', $config);
   }
+  /**
+   * Submit batches for all lists.
+   *
+   * @return array with list_ids in the keys and the number of updates submitted as the values.
+   */
+  public static function submitBatches() {
+    $config = CRM_Mailchimpsync::getConfig();
+    $results = [];
+    foreach ($config['lists'] as $list_id => $details) {
+      $audience = CRM_Mailchimpsync_Audience::newFromListId($list_id);
+      $c = $audience->submitBatch();
+      if ($c > 0) {
+        $results[$list_id] = $c;
+      }
+    }
+    return $results;
+  }
+  /**
+   * Fetch batches for each API key and update our batches table.
+   */
+  public static function fetchBatches() {
+    $batches = [];
+    $config = CRM_Mailchimpsync::getConfig();
+
+    foreach ($config['accounts'] as $api_key => $account_details) {
+      $api = static::getMailchimpApi($api_key);
+      $result = $api->get('batches')['batches'] ?? [];
+      foreach ($result as $batch) {
+        $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncBatch();
+        $bao->mailchimp_batch_id = $batch['id'];
+        if ($bao->find(1)) {
+          $bao->status = $batch['status'];
+          $bao->submitted_at = $batch['submitted_at'];
+          $bao->completed_at = $batch['completed_at'];
+          $bao->finished_operations = $batch['finished_operations'];
+          $bao->errored_operations = $batch['errored_operations'];
+          $bao->total_operations = $batch['total_operations'];
+          $bao->save();
+          $_ = [];
+          $bao->storeValues($bao, $_);
+          $batches[$bao->mailchimp_list_id][$bao->mailchimp_batch_id] = $_;
+
+          // If the process has completed, process it now instead of waiting for the webhook.
+          if ($bao->status === 'finished') {
+            // DISABLED $bao->processCompletedBatch($batch);
+          }
+        }
+      }
+    }
+    return $batches;
+  }
 }

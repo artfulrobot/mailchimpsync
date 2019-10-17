@@ -14,6 +14,16 @@
         <h2>{{ mailingGroups[list.subscriptionGroup].title }}</h2>
         <p>Sync with Mailchimp audience: <strong>{{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</strong> on account <em>{{ mcsConfig.accounts[list.apiKey].account_name }}</em></p>
         <p>Last sync: <em>{{ (mcsStatus[listId].lastSyncTime === null) ? 'Never' : mcsStatus[listId].lastSyncTime }}</em></p>
+        <div>
+          {{ listStats=mcsStatus[listId].stats; "" }}
+          {{ listStats.subscribed_at_mailchimp }} at mailchimp<br/>
+          <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
+          <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
+          <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
+          {{ listStats.subscribed_at_civicrm }} at CiviCRM <br />
+          <code>- </code>{{ listStats.cannot_subscribe }} cannot subscribe.<br />
+          <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
+        </div>
         <p>
           <span class="mcs-status-pill bad" ng-if="mcsStatus[listId].stats.fail > 0">{{mcsStatus[listId].stats.fail}} Failed</span>
           <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].stats.todo > 0">{{mcsStatus[listId].stats.live}} To do</span>
@@ -21,14 +31,34 @@
           <span class="mcs-status-pill good" ng-if="mcsStatus[listId].stats.ok > 0">{{mcsStatus[listId].stats.live}} In Sync</span>
         </p>
 
-        <div ng-if="mcsStatus[listId].locks.fetchAndReconcile != 'readyToFetch'">
-          Currently running fetch and reconcile.
+        <p>Sync: Fetch and reconcile process:
+          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].locks.fetchAndReconcile != 'readyToFetch'">Running</span>
+          <span class="mcs-status-pill good" ng-if="mcsStatus[listId].locks.fetchAndReconcile == 'readyToFetch'">Waiting</span>
+        </p>
+        <p>Sync: Mailchimp updates:
+          <span ng-if="listStats.mailchimp_updates_pending > 0">
+            <span class="mcs-status-pill meh" >{{mcsStatus[listId].mailchimp_updates_pending}} Pending</span>
+              <span ng-if="mcsStatus[listId].batches" >
+                <span ng-if="listStats.batch_pending_operations > 0">Waiting on Mailchimp to process {{listStats.batch_pending_operations}} operations</span>
+                {{ listStats.batch_finished_operations}}/{{listStats.batch_total_operations}} done, {{listStats.batch_errored_operations}} errors
+                <span ng-if="listStats.batch_finished_operations === listStats.batch_total_operations">Batches complete, will process results</span>
+              </span>
+          </span>
+
+          <span class="mcs-status-pill good" ng-if="listStats.mailchimp_updates_pending == 0">Completed</span>
+        </p>
+
+        <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
+          <table>
+            <thead><tr><th>Date</th><th>Message</th></tr></thead>
+            <tbody>
+              <tr ng-repeat="row in mcsStatus[listId].log">
+                <td>{{row.time}}</td><td>{{row.message}}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-
-        </div>
-        <div ng-if="mcsStatus[listId].fetch.since">
-        </div>
       </div>
 
     </div><!-- ends main overview-->

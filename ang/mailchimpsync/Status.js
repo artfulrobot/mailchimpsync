@@ -55,6 +55,14 @@
     $scope.view = 'overview';
     $scope.editData = null;
     $scope.mailingGroups = mailingGroups;
+
+    // Now page is loaded, do the slower fetch that gets more info.
+    const getDetailedUpdate = function() {
+      return crmApi('Mailchimpsync', 'getstatus', {batches: 1})
+      .then(r => { mcsStatus = r.values || {}; $scope.mcsStatus= mcsStatus; });
+    };
+    setInterval( getDetailedUpdate, 60000);
+    getDetailedUpdate();
   });
 
 })(angular, CRM.$, CRM._);
