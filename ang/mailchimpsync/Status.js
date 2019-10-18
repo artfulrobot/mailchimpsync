@@ -147,6 +147,14 @@
       };
       return (status in map) ? map[status] : 'grey';
     };
+    $scope.mapSyncStatusToColour = function mapMailchimpStatusToColour(status) {
+      const map = {
+        ok: 'good',
+        live: 'meh',
+        fail: 'bad',
+      };
+      return (status in map) ? map[status] : 'grey';
+    };
     $scope.mapCiviCRMStatusToColour = function mapMailchimpStatusToColour(status) {
       const map = {
         Added: 'good',

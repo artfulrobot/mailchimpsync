@@ -29,7 +29,8 @@
       <div crm-ui-debug="selectedListId"></div>
 
       <h2>{{ mailingGroups[selectedList.subscriptionGroup].title }}</h2>
-      <p>Sync with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
+      <p>Sync CiviCRM <a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}">group</a>
+      with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
       <p>Last sync: <em>{{ (mcsStatus[selectedListId].lastSyncTime === null) ? 'Never' : mcsStatus[selectedListId].lastSyncTime }}</em></p>
       <div>
         {{ listStats=mcsStatus[selectedListId].stats; "" }}
@@ -39,7 +40,6 @@
         <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
         <br />
         <a href ng-click="cacheView({mailchimp_list_id: selectedListId, civicrm_status: 'Added'})">{{ listStats.subscribed_at_civicrm }} in CiviCRM</a>
-        <!--<a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}"></a>-->
         <br />
         <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />
         <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
@@ -47,8 +47,10 @@
       <p>
         {{fetchLock = mcsStatus[selectedListId].locks.fetchAndReconcile || 'readyToFetch';""}}
         <span class="mcs-status-pill meh" ng-if="fetchLock != 'readyToFetch'">Running</span>
-        <span class="mcs-status-pill good" ng-if="fetchLock == 'readyToFetch'">Waiting</span>
-        Will periodically fetch and reconcile
+        <span ng-if="fetchLock == 'readyToFetch'">
+          <span class="mcs-status-pill good" ng-if="fetchLock == 'readyToFetch'">Waiting</span>
+          Will periodically fetch and reconcile
+        </span>
       </p>
       <p>
         <span ng-if="listStats.mailchimp_updates_unsubmitted > 0">
@@ -169,22 +171,30 @@
         <div ng-repeat="row in cacheRows" class="mcs-cache-row">
 
           <div class="mcs-cache-row__header">
-            <span class="mcs-status-pill {{ mapSyncStatusToColour(row.sync_status) }}" >{{row.sync_status}}</span>
-            {{ row.mailchimp_email }} / CiviCRM Contact
-            <span ng-if="!row.civicrm_contact_id">Not yet created</span>
-            <span ng-if="row.civicrm_contact_id"><a href="{{crmUrl('civicrm/contact/view', {reset:1, cid:row.civicrm_contact_id }) }}">{{ row.civicrm_contact_id }}</a></span>
+            <span class="mcs-cache-row__who">
+              <span class="mcs-status-pill {{ mapSyncStatusToColour(row.sync_status) }}" >{{row.sync_status}}</span>
+
+              {{ row.mailchimp_email }} / CiviCRM Contact
+                <span ng-if="!row.civicrm_contact_id">Not yet created</span>
+                <span ng-if="row.civicrm_contact_id"><a href="{{crmUrl('civicrm/contact/view', {reset:1, cid:row.civicrm_contact_id }) }}">{{ row.civicrm_contact_id }}</a></span>
+            </span>
+            <span class="mcs-cache-row__list">{{ mailingGroups[mcsConfig.lists[row.mailchimp_list_id].subscriptionGroup].title}}</span>
           </div>
           <div class="mcs-cache-row__body">
-            <p>Status: Mailchimp:
-              <span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status}}</span>
-              CiviCRM:
-              <span class="mcs-status-pill {{ mapCiviCRMStatusToColour(row.civicrm_status) }}" >{{row.civicrm_status || 'Missing'}}</span>
-            </p>
-            <p>Last updated: Mailchimp:
-              {{row.mailchimp_updated}}
-              CiviCRM:
-              {{row.civicrm_updated}}
-            </p>
+            <table><thead><th width="33%"></th><th width="33%">Mailchimp</th><th width="33%">CiviCRM</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>Status</td>
+                  <td><span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status}}</span></td>
+                  <td><span class="mcs-status-pill {{ mapCiviCRMStatusToColour(row.civicrm_status) }}" >{{row.civicrm_status || 'Missing'}}</span></td>
+                </tr>
+                <tr>
+                  <td>Last updated</td>
+                  <td>{{row.mailchimp_updated}}</td>
+                  <td>{{row.civicrm_updated}}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
         </div><!-- end of a row -->

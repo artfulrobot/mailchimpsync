@@ -31,6 +31,13 @@
   margin-bottom: 0.5rem;
   background: #eee;
   padding: 1rem;
+  display: flex;
+}
+.mcs-cache-row__who {
+  flex: 1 1 auto;
+}
+.mcs-cache-row__list {
+  flex: 0 1 auto;
 }
 .mcs-cache-row__body {
   padding: 1rem;

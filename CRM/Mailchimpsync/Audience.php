@@ -158,16 +158,26 @@ class CRM_Mailchimpsync_Audience
     while ($remaining_time > 0) {
       $status = $this->getStatus();
       switch ($status['locks']['fetchAndReconcile'] ?? NULL) {
+
+      // Busy states - this is to prevent a 2nd cron job firing over the top of this one.
+      case 'busy':
+        $this->log("Called but locks say process already busy. Will not do anything.");
+        return; // exit.
+
       case NULL:
-      case 'fetch':
       case 'readyToFetch':
         $this->mergeMailchimpData(['max_time' => $remaining_time] + $sync_since);
         break;
 
       case 'readyToFixContactIds':
         // Assume these two are quick enough to run together as one; they're all SQL driven.
-        $this->populateMissingContactIds();
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'to'     => 'busy',
+          'andLog' => 'Beginning to remove invalid contact IDs and populate missing ones from email matches.'
+        ]);
         $this->removeInvalidContactIds();
+        $this->populateMissingContactIds();
         $this->updateLock([
           'for'    => 'fetchAndReconcile',
           'is'     => 'readyToCreateNewContactsFromMailchimp',
@@ -175,48 +185,21 @@ class CRM_Mailchimpsync_Audience
         break;
 
       case 'readyToCreateNewContactsFromMailchimp':
-        $total = $this->createNewContactsFromMailchimp();
-        $this->updateLock([
-          'for'    => 'fetchAndReconcile',
-          'is'     => 'readyToAddCiviOnly',
-          'andLog' => "createNewContactsFromMailchimp: Added $total new contacts found in Mailchimp but not CiviCRM.",
-        ]);
+        $total = $this->createNewContactsFromMailchimp($remaining_time);
         break;
 
       case 'readyToAddCiviOnly':
         $total = $this->addCiviOnly();
-        $this->updateLock([
-          'for'    => 'fetchAndReconcile',
-          'is'     => 'readyToCopyCiviGroupStatus',
-          'andLog' => "addCiviOnly: Added $total contacts found in CiviCRM but not in Mailchimp.",
-        ]);
         break;
 
       case 'readyToCopyCiviGroupStatus':
         $this->copyCiviCRMSubscriptionGroupStatus($status['fetch']['since'] ?? '');
-        $this->updateLock([
-          'for'    => 'fetchAndReconcile',
-          'is'     => 'readyToReconcileQueue',
-          'andLog' => "copyCiviCRMSubscriptionGroupStatus: Copied CiviCRM's subscription group update dates.",
-        ]);
         break;
 
       case 'readyToReconcileQueue':
         $stats = $this->reconcileQueueProcess($remaining_time);
         if ($stats['done'] == $stats['count']) {
-          $this->updateLock([
-            'for'    => 'fetchAndReconcile',
-            'is'     => 'readyToFetch', // reset for next time.
-            'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
-          ]);
           break 2; // Jump out of the switch, and then the while loop as we're done now.
-        }
-        else {
-          $this->updateLock([
-            'for'    => 'fetchAndReconcile',
-            'is'     => 'readyToReconcileQueue',
-            'andLog' => "reconcileQueueProcess: Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time.",
-          ]);
         }
         break;
 
@@ -230,6 +213,9 @@ class CRM_Mailchimpsync_Audience
 
     if ($remaining_time <= 0) {
       $this->log('Stopping processing as out of time.');
+    }
+    else {
+      $this->log('fetchAndReconcile process is complete.');
     }
   }
   // The following methods deal with the 'fetch' phase
@@ -247,13 +233,11 @@ class CRM_Mailchimpsync_Audience
    */
   public function mergeMailchimpData(array $params=[]) {
 
-    if (!$this->attemptToObtainLock([
-      'for' => 'fetchAndReconcile',
-      'to'  => 'fetch',
-      'if'  => 'readyToFetch',
-    ])) {
-      return;
-    }
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'busy',
+      'andLog' => 'mergeMailchimpData: beginning to fetch data from mailchimp.'
+    ]);
 
     try {
       $status = $this->getStatus();
@@ -299,7 +283,8 @@ class CRM_Mailchimpsync_Audience
       }
 
       do {
-        $this->log("fetchMergeMailchimpData: fetching $api->max_members_to_fetch records from offset $query[offset]");
+        $this->log("fetchMergeMailchimpData: fetching up to $api->max_members_to_fetch records from offset $query[offset] "
+          . (($query['since_last_changed'] ?? '') ? ' since ' . $query['since_last_changed'] : ''));
         $response = $api->get("lists/$this->mailchimp_list_id/members", $query);
 
         // Fetch (filtered) data from our mock_mailchimp_data array.
@@ -314,7 +299,7 @@ class CRM_Mailchimpsync_Audience
         $more_to_fetch = $response['total_items'] - $query['offset'];
 
         if ($more_to_fetch > 0) {
-          $this->updateAudienceStatusSetting(function(&$c) use ($query, $response) {
+          $this->updateAudienceStatusSetting(function(&$c) use ($query) {
             // Store current offset, total to do.
             $c['fetch']['offset'] = $query['offset'];
           });
@@ -337,10 +322,17 @@ class CRM_Mailchimpsync_Audience
         'andLog' => "fetchMergeMailchimpData: stopping but $more_to_fetch more to fetch" ]);
     }
     else {
+      // We've fetched everything.
       $this->updateLock([
-        'for'    => 'fetchAndReconcile',
-        'is'     => 'readyToFixContactIds',
-        'andLog' => "fetchMergeMailchimpData: completed ($response[total_items] fetched). Ready to reconcile." ]);
+        'for'     => 'fetchAndReconcile',
+        'is'      => 'readyToFixContactIds',
+        'andLog'  => "fetchMergeMailchimpData: completed ($response[total_items] fetched).",
+        // Reset the offset for next time.
+        'andAlso' => function(&$c) {
+          $c['fetch']['offset'] = 0;
+          unset($c['fetch']['since']);
+        }
+      ]);
     }
   }
   /**
@@ -540,10 +532,16 @@ class CRM_Mailchimpsync_Audience
    *
    * Call this after calling populateMissingContactIds()
    *
+   * @param null|int time in seconds to spend.
    * @return int No. contacts created.
    */
-  public function createNewContactsFromMailchimp() {
+  public function createNewContactsFromMailchimp($remaining_time=NULL) {
 
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'to'     => 'busy',
+      'andLog' => 'createNewContactsFromMailchimp: beginning.'
+    ]);
     $total = 0;
     $dao = CRM_Core_DAO::executeQuery(
       'SELECT * FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1 AND civicrm_contact_id IS NULL',
@@ -551,6 +549,8 @@ class CRM_Mailchimpsync_Audience
         1 => [$this->mailchimp_list_id, 'String']
       ]
     );
+    $stop_time = time() + ($remaining_time ?? 60*60*24*7);
+
     while ($dao->fetch()) {
       $total++;
 
@@ -566,7 +566,22 @@ class CRM_Mailchimpsync_Audience
 
       $id = (int) $dao->id;
       CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = $contact_id WHERE id = $id");
+      if (time() >= $stop_time) {
+        // Time's up, but we're not finished.
+        $this->updateLock([
+          'for'    => 'fetchAndReconcile',
+          'is'     => 'readyToCreateNewContactsFromMailchimp',
+          'andLog' => "createNewContactsFromMailchimp: Added $total new contacts found in Mailchimp but not CiviCRM but out of time - more to do.",
+        ]);
+        return $total;
+      }
     }
+    // Completed!
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'readyToAddCiviOnly',
+      'andLog' => "createNewContactsFromMailchimp: Added $total new contacts found in Mailchimp but not CiviCRM. No more to do.",
+    ]);
     return $total;
   }
   /**
@@ -577,6 +592,11 @@ class CRM_Mailchimpsync_Audience
    * @param array $params
    */
   public function addCiviOnly() {
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'busy',
+      'andLog' => "addCiviOnly: Adding contacts found in CiviCRM but not in Mailchimp.",
+    ]);
     $civicrm_subscription_group_id = $this->getSubscriptionGroup();
 
     $sql = "
@@ -593,9 +613,13 @@ class CRM_Mailchimpsync_Audience
     $dao = CRM_Core_DAO::executeQuery($sql, [
       1 => [$this->mailchimp_list_id, 'String']
     ]);
-    return $dao->affectedRows();
-
-
+    $total = $dao->affectedRows();
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'readyToCopyCiviGroupStatus',
+      'andLog' => "addCiviOnly: Added $total contacts found in CiviCRM but not in Mailchimp.",
+    ]);
+    return $total;
   }
 
   /**
@@ -606,6 +630,11 @@ class CRM_Mailchimpsync_Audience
    * As a bulk SQL operation, this will be faster than querying contacts one at a time.
    */
   public function copyCiviCRMSubscriptionGroupStatus($since) {
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'busy',
+      'andLog' => "copyCiviCRMSubscriptionGroupStatus: Copying CiviCRM's subscription group update dates " . ($since ? "since $since" : ''),
+    ]);
 
     $params = [
       1 => [$this->getSubscriptionGroup(), 'Integer'],
@@ -639,6 +668,11 @@ class CRM_Mailchimpsync_Audience
         WHERE cache.mailchimp_list_id = %2 ' . $where;
     CRM_Core_DAO::executeQuery($sql, $params);
 
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'readyToReconcileQueue',
+      'andLog' => "copyCiviCRMSubscriptionGroupStatus: complete.",
+    ]);
   }
   // The following methods deal with the 'reconciliation' phase
   /**
@@ -648,6 +682,11 @@ class CRM_Mailchimpsync_Audience
    * this many seconds. This is useful for http driven cron, for exmaple.
    */
   public function reconcileQueueProcess(int $max_time=0) {
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'is'     => 'busy',
+      'andLog' => 'reconcileQueueProcess beginning',
+    ]);
     $stop_time = ($max_time > 0) ? time() + $max_time : FALSE;
 
     $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
@@ -670,22 +709,24 @@ class CRM_Mailchimpsync_Audience
       $this->reconcileQueueItem($dao);
       $done++;
     }
-    /* This loop did not work. I think because the dao object gets updated.
-    $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
-    $dao->mailchimp_list_id = $this->getListId();
-    $dao->sync_status = 'todo';
-    $ids = CRM_Core_DAO::executeQuery(
-      'SELECT id FROM civicrm_mailchimpsync_cache WHERE sync_status = "todo" AND mailchimp_list_id = %1',
-      [1 => [$this->getListId(), 'String']]
-    )->fetchMap('id', 'id');
 
-    $done = 0;
-    while ($dao->fetch() && (!$stop_time || (time() < $stop_time))) {
-      $this->reconcileQueueItem(clone($dao));
+    $stats = ['done' => $done, 'count' => count($ids)];
+
+    if ($stats['done'] == $stats['count']) {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToFetch', // reset for next time.
+        'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
+      ]);
     }
-     */
-
-    return ['done' => $done, 'count' => count($ids)];
+    else {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToReconcileQueue',
+        'andLog' => "reconcileQueueProcess: Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time.",
+      ]);
+    }
+    return $stats;
   }
   /**
    * Reconcile a single item from the cache table.
@@ -1072,9 +1113,9 @@ class CRM_Mailchimpsync_Audience
    *
    * @param array $params with keys:
    * 'for' - the type of lock requested
-   * 'to' - the value to set the lock to
-   * 'if' - the lock will only be granted if the current lock status is this
-   *        (or there is no such lock)
+   * 'to'  - the value to set the lock to
+   * 'if'  - the lock will only be granted if the current lock status is this
+   *         (or there is no such lock)
    * @return bool TRUE if lock obtained.
    */
   public function attemptToObtainLock($params) {
@@ -1105,16 +1146,21 @@ class CRM_Mailchimpsync_Audience
    * - for: the type of lock.
    * - is: the final state.
    * - andLog: log message (optional).
+   * - andAlso: callback (optional).
    */
   public function updateLock(array $params) {
     $purpose = $params['for'];
     $ready = $params['is'];
     $message = $params['andLog'] ?? NULL;
+    $andAlso = $params['andAlso'] ?? NULL;
 
-    $this->updateAudienceStatusSetting(function(&$config) use ($purpose, $ready, $message) {
+    $this->updateAudienceStatusSetting(function(&$config) use ($purpose, $ready, $message, $andAlso) {
       $config['locks'][$purpose] = $ready;
       if ($message) {
         $config['log'][] = ['time' => date('Y-m-d H:i:s'), 'message' => $message];
+      }
+      if (is_callable($andAlso)) {
+        $andAlso($config);
       }
     });
   }
