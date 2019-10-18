@@ -32,7 +32,7 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
     $result = $api->get('', ['fields' => 'account_name,email,first_name,last_name,username']);
 
     // Fetch audiences.
-    $audiences = $api->get('lists', ['fields' => 'lists.id,lists.name,lists.stats']);
+    $audiences = $api->get('lists', ['fields' => 'lists.id,lists.name,lists.stats', 'count' => 1000]);
 
     // Store lists keyed by their IDs.
     $result['audiences'] = [];

@@ -158,6 +158,14 @@ function mailchimpsync_civicrm_navigationMenu(&$menu) {
     'operator'   => 'OR',
     'separator'  => 0,
   ]);
+  _mailchimpsync_civix_insert_navigation_menu($menu, 'Mailings', [
+    'label'      => E::ts('Mailchimp Sync Status'),
+    'name'       => 'mailchimpsync_config',
+    'url'        => 'civicrm/a/#/mailchimpsync',
+    'permission' => 'access CiviMail',
+    'operator'   => 'OR',
+    'separator'  => 0,
+  ]);
   _mailchimpsync_civix_navigationMenu($menu);
 }
 

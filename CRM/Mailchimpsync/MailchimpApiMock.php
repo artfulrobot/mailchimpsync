@@ -144,9 +144,9 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
         return $this->mockGetBatchStatus($matches[1]);
       }
     }
-    elseif ($method === 'PUT') {
+    elseif ($method === 'POST') {
       if ($path === 'batches') {
-        return $this->mockPutBatches($body);
+        return $this->mockPostBatches($body);
       }
     }
     throw new Exception("Code not written to mock the request: ". json_encode(
@@ -202,7 +202,7 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
   }
   /**
    */
-  public function mockPutBatches($data) {
+  public function mockPostBatches($data) {
     $id = "batch_" . count($this->batches);
     $this->batches[$id] = $data;
     return [

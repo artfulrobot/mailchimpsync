@@ -60,6 +60,7 @@
     $scope.mailingGroups = mailingGroups;
     $scope.cacheRows = null;
     $scope.cacheRowCount = null;
+    $scope.isLoading = true;
     $scope.cacheParams = {
       sync_status: '',
       mailchimp_status: '',
@@ -72,10 +73,15 @@
     // Now page is loaded, do the slower fetch that gets more info.
     var interval;
     $scope.getDetailedUpdate = function() {
+      $scope.isLoading = true;
       clearInterval(interval);
-      return crmApi('Mailchimpsync', 'getstatus', {batches: 1})
-      .then(r => { mcsStatus = r.values || {}; $scope.mcsStatus= mcsStatus; });
       interval = setInterval( $scope.getDetailedUpdate, 60000);
+      return crmApi('Mailchimpsync', 'getstatus', {batches: 1})
+      .then(r => {
+        mcsStatus = r.values || {};
+        $scope.mcsStatus= mcsStatus;
+        $scope.isLoading = false;
+      });
     };
     $scope.getDetailedUpdate();
 

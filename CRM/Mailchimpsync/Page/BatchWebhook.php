@@ -38,7 +38,7 @@ class CRM_Mailchimpsync_Page_BatchWebhook extends CRM_Core_Page {
     catch (Exception $e) {
       // All other errors.
       Civi::log()->error("Exception processing Mailchimp batch webhook.",
-        [ 'exception' => $e->getMessage(), 'data' => json_encode($data), 'trace' => $e->getTraceAsString() ]);
+        [ 'exception' => $e, 'data' => json_encode($data), 'trace' => $e->getTraceAsString() ]);
       return 500;
     }
     return 200;

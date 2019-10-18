@@ -890,19 +890,30 @@ class CRM_Mailchimpsync_Audience
    */
   public function getStatus($reset_cache=FALSE) {
     if ($reset_cache || !$this->status_cache) {
-      $key = 'mailchimpsync_audience_status_' . $this->mailchimp_list_id;
-      $status = Civi::settings()->get($key);
-      if ($status && !is_array($status)) {
-        throw new InvalidArgumentException("Invalid JSON in setting: $key");
+      $status = CRM_Core_DAO::executeQuery(
+        'SELECT data FROM civicrm_mailchimpsync_status WHERE list_id = %1',
+        [1 => [$this->mailchimp_list_id, 'String']])->fetchValue();
+
+      if ($status) {
+        $status = unserialize($status);
       }
-      elseif (!$status) {
+      if (!$status) {
         // Create initial default status.
         $status = [
           'lastSyncTime' => NULL,
-          'locks' => [],
+          'locks' => ['fetchAndReconcile' => 'readyToFetch'],
           'log'   => [],
           'fetch' => [],
         ];
+
+        // Save to the database so we can rely on it being there when we update it.
+        CRM_Core_DAO::executeQuery(
+          'INSERT INTO civicrm_mailchimpsync_status VALUES(%1, %2);',
+          [
+            1 => [$this->mailchimp_list_id, 'String'],
+            2 => [serialize($status), 'String']
+          ]);
+
       }
       $this->status_cache = $status;
     }
@@ -1025,7 +1036,7 @@ class CRM_Mailchimpsync_Audience
     });
   }
   /**
-   * Update setting using locks.
+   * Update setting.
    *
    * @param callable $callback
    *        This must take &$config as a parameter and alter it as needed.
@@ -1039,10 +1050,16 @@ class CRM_Mailchimpsync_Audience
 
     // Alter config via callback.
     $changed = $callback($config);
+
     if ($changed !== FALSE) {
       // Store the changed status in settings.
-      $key = 'mailchimpsync_audience_status_' . $this->mailchimp_list_id;
-      Civi::settings()->set($key, $config);
+      CRM_Core_DAO::executeQuery(
+        'UPDATE civicrm_mailchimpsync_status SET data = %1 WHERE list_id = %2',
+        [
+          1 => [serialize($config), 'String'],
+          2 => [$this->mailchimp_list_id, 'String']
+        ]);
+
       $this->status_cache = $config;
     }
 

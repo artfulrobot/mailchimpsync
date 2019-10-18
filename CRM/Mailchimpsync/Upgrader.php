@@ -12,8 +12,9 @@ class CRM_Mailchimpsync_Upgrader extends CRM_Mailchimpsync_Upgrader_Base {
   /**
    * Example: Run an external SQL script when the module is installed.
    *
+   */
   public function install() {
-    $this->executeSqlFile('sql/myinstall.sql');
+    $this->executeSqlFile('sql/create-mailchimpsync_status-table.sql');
   }
 
   /**
@@ -37,9 +38,9 @@ class CRM_Mailchimpsync_Upgrader extends CRM_Mailchimpsync_Upgrader_Base {
 
   /**
    * Example: Run an external SQL script when the module is uninstalled.
-   *
+   */
   public function uninstall() {
-   $this->executeSqlFile('sql/myuninstall.sql');
+   $this->executeSqlFile('sql/delete-mailchimpsync_status-table.sql');
   }
 
   /**

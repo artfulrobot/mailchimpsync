@@ -784,6 +784,14 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Check that the batch is correct.
     $api = $audience->getMailchimpApi();
+
+    $got = $api->batches;
+    $this->assertInternalType('string', $got['batch_0']['operations'][0]['body'] ?? NULL);
+    $this->assertInternalType('string', $got['batch_0']['operations'][1]['body'] ?? NULL);
+    // Decode the json because we can't guarantee the order it gets serialised in.
+    $got['batch_0']['operations'][0]['body'] = json_decode($got['batch_0']['operations'][0]['body'], TRUE);
+    $got['batch_0']['operations'][1]['body'] = json_decode($got['batch_0']['operations'][1]['body'], TRUE);
+
     $this->assertEquals([
       'batch_0' => [
         'operations' => [
@@ -808,7 +816,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
           ]
         ]
       ]
-    ], $api->batches, "Failed checking batches were created as expected.");
+    ], $got, "Failed checking batches were created as expected.");
   }
   /**
    * @expected_exception InvalidArgumentException
@@ -834,11 +842,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       'data' => [
         'operation_id' => 'mailchimpsync_' . $various->update_id,
         'status_code' => 200,
-        'data' => [
+        'response' => json_encode([
           'email_address' => 'contact1@example.com',
           'status' => 'subscribed',
           'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
-        ],
+        ]),
       ]]
     ]);
 
@@ -917,22 +925,22 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'data' => [
           'operation_id' => 'mailchimpsync_' . $various->update_id,
           'status_code' => 200,
-          'data' => [
+          'response' => json_encode([
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
-          ],
+          ]),
         ],
       ],
       'file_duo.json' => [
         'data' => [
           'operation_id' => 'mailchimpsync_' . $various->update_id2,
           'status_code' => 200,
-          'data' => [
+          'response' => json_encode([
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
-          ],
+          ]),
         ]
       ]
     ]);
@@ -1012,11 +1020,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         'data' => [
           'operation_id' => 'mailchimpsync_' . $various->update_id,
           'status_code' => 200,
-          'data' => [
+          'response' => json_encode([
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
-          ],
+          ]),
         ],
       ],
     ]);
@@ -1080,15 +1088,16 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $update->id = $various->update_id;
     $update->find(1);
 
-
     // Call the thing we want to test:
     $returned_error = [
         'title' => 'Member In Compliance State',
-        // Mailchimp has some other bits here
+        'status' => 400, // we don't test this
+        'detail' => '...', // we don't test this
+        'type' => '...', // we don't test this
       ];
     $update->handleMailchimpUpdatesResponse([
       'status_code' => 400,
-      'data' => $returned_error,
+      'response' => $returned_error,
     ]);
 
     // Check the updates.
@@ -1136,7 +1145,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       ];
     $update->handleMailchimpUpdatesResponse([
       'status_code' => 400,
-      'data' => $returned_error,
+      'response' => $returned_error,
     ]);
 
     // Check the updates.

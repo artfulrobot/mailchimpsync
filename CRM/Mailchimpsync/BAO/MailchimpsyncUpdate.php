@@ -4,6 +4,14 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
 class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_MailchimpsyncUpdate {
 
   /**
+   * This handles a mailchimp response from a batch update.
+   *
+   * A successful response looks like:
+   * { status_code: 200, response: {...} }
+   *
+   * An error response looks like:
+   * { status_code: 400, response: {title: '', type: '', detail: ''} }
+   *
    *
    * @param array $response
    */

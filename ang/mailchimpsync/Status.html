@@ -9,7 +9,7 @@
   <div crm-ui-debug="mailingGroups"></div>
 
   <p>
-    <button ng-click="getDetailedUpdate()">Refresh</button>
+    <button ng-click="getDetailedUpdate()" nf-disabled="isLoading" >{{ isLoading ? 'Loading' : 'Refresh'}}</button>
     &nbsp; <a href ng-show="view !== 'overview'" ng-click="view='overview'" >Back to overview</a>
     &nbsp; <a href ng-show="view !== 'detail' && selectedListId" ng-click="view='detail'" >Back to {{mailingGroups[selectedList.subscriptionGroup].title}}</a>
     &nbsp; <a href ng-show="view !== 'cache'" ng-click="cacheView()" >Browse Cache</a>
@@ -45,9 +45,10 @@
         <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
       </div>
       <p>
-        <span class="mcs-status-pill meh" ng-if="mcsStatus[selectedListId].locks.fetchAndReconcile != 'readyToFetch'">Running</span>
-        <span class="mcs-status-pill good" ng-if="mcsStatus[selectedListId].locks.fetchAndReconcile == 'readyToFetch'">Waiting</span>
-        Sync: Fetch and reconcile process
+        {{fetchLock = mcsStatus[selectedListId].locks.fetchAndReconcile || 'readyToFetch';""}}
+        <span class="mcs-status-pill meh" ng-if="fetchLock != 'readyToFetch'">Running</span>
+        <span class="mcs-status-pill good" ng-if="fetchLock == 'readyToFetch'">Waiting</span>
+        Will periodically fetch and reconcile
       </p>
       <p>
         <span ng-if="listStats.mailchimp_updates_unsubmitted > 0">
@@ -60,7 +61,7 @@
         <span class="mcs-status-pill good" ng-if="listStats.mailchimp_updates_pending == 0">No outstanding updates</span>
       </p>
       <p>
-        <span class="mcs-status-pill grey" ng-if="!mcsStatus[selectedListId].batches" >Loading</span>
+        <span class="mcs-status-pill grey" ng-if="isLoading" >Loading</span>
         <span ng-if="mcsStatus[selectedListId].batches" >
           <span ng-if="listStats.batch_pending_operations > 0">
             <span class="mcs-status-pill meh" >In progress</span>
