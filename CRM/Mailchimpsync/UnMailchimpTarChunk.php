@@ -4,20 +4,14 @@ class CRM_Mailchimpsync_UnMailchimpTarChunk implements JsonSerializable {
   public $length;
   public $type;
   public $is_null;
-  public $end_of_file=FALSE;
 
   public function __construct($data) {
-    // I believed the spec was that tar files were padded with nul bytes to 512
-    // bytes, however Mailchimp doesn't bother with this.
-    // if (strlen($data) !== 512) {
-    //   throw new InvalidArgumentException("require 512 bytes, got " . strlen($data));
-    // }
+    if (strlen($data) !== 512) {
+      throw new InvalidArgumentException("require 512 bytes, got " . strlen($data));
+    }
     $length = strlen($data);
     if ($length < 157) {
       throw new InvalidArgumentException("Received chunk of tar file that is only $length bytes. This is not long enough for even the headers.");
-    }
-    elseif ($length < 512) {
-      $this->end_of_file = TRUE;
     }
     else {
       $this->is_null = ($data === str_repeat("\x00", 512));

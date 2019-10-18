@@ -52,6 +52,11 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
         $returnValues[$list_id]['stats']['batch_total_operations']
         - $returnValues[$list_id]['stats']['batch_finished_operations'];
     }
+
+    // Shorthand summary.
+    $returnValues[$list_id]['in_sync'] =
+      ($returnValues[$list_id]['locks']['fetchAndReconcile'] ?? 'readyToFetch') === 'readyToFetch'
+      && $returnValues[$list_id]['stats']['mailchimp_updates_pending'] === 0;
   }
 
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Getstatus');

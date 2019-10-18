@@ -52,17 +52,102 @@
     // We have myContact available in JS. We also want to reference it in HTML.
     $scope.mcsConfig = mcsConfig;
     $scope.mcsStatus = mcsStatus;
+    $scope.crmUrl = CRM.url;
     $scope.view = 'overview';
+    $scope.selectedList = null;
+    $scope.selectedListId = null;
     $scope.editData = null;
     $scope.mailingGroups = mailingGroups;
+    $scope.cacheRows = null;
+    $scope.cacheRowCount = null;
+    $scope.cacheParams = {
+      sync_status: '',
+      mailchimp_status: '',
+      civicrm_status: '',
+      mailchimp_email: '',
+      civicrm_contact_id: '',
+    };
+    $scope.cacheOptions = { limit: 10, offset: 0 };
 
     // Now page is loaded, do the slower fetch that gets more info.
-    const getDetailedUpdate = function() {
+    var interval;
+    $scope.getDetailedUpdate = function() {
+      clearInterval(interval);
       return crmApi('Mailchimpsync', 'getstatus', {batches: 1})
       .then(r => { mcsStatus = r.values || {}; $scope.mcsStatus= mcsStatus; });
+      interval = setInterval( $scope.getDetailedUpdate, 60000);
     };
-    setInterval( getDetailedUpdate, 60000);
-    getDetailedUpdate();
+    $scope.getDetailedUpdate();
+
+    $scope.showDetails = function showDetails(listId) {
+      $scope.view = 'detail';
+      $scope.selectedListId = listId;
+      $scope.selectedList = mcsConfig.lists[listId];
+    }
+    $scope.cacheView = function cacheView(params) {
+      $scope.cacheRows = null;
+      $scope.view = 'cache';
+      $scope.cacheParams = Object.assign({
+        sync_status: '',
+        mailchimp_status: '',
+        civicrm_status: '',
+        mailchimp_email: '',
+        civicrm_contact_id: '',
+      }, params);
+      $scope.cacheRowCount = null;
+      $scope.cacheOptions = { limit: 10, offset: 0 };
+      $scope.loadCacheData();
+    }
+    $scope.loadCacheData = function loadCacheData(skipRecount) {
+      const p = {};
+
+      for (const key in $scope.cacheParams) {
+        if ($scope.cacheParams[key]) {
+          p[key] = $scope.cacheParams[key];
+        }
+      }
+      if (p.mailchimp_email) {
+        // This is a like query.
+        p.mailchimp_email = {LIKE: '%' + p.mailchimp_email + '%'};
+      }
+
+      if (!skipRecount) {
+        crmApi('MailchimpsyncCache', 'getcount', p)
+        .then(r => {
+          $scope.cacheRowCount = r.result;
+          Object.assign(p, {options: $scope.cacheOptions});
+          return (r.result > 0) ? crmApi('MailchimpsyncCache', 'get', p) : {};
+        })
+        .then(r => {
+          $scope.cacheRows = r.values || [];
+        });
+      }
+      else {
+        Object.assign(p, {options: $scope.cacheOptions});
+        crmApi('MailchimpsyncCache', 'get', p)
+        .then(r => {
+          $scope.cacheRows = r.values || [];
+        });
+      }
+    };
+    $scope.mapMailchimpStatusToColour = function mapMailchimpStatusToColour(status) {
+      const map = {
+        subscribed: 'good',
+        pending: 'good',
+        unsubscribed: 'meh',
+        transactional: 'meh',
+        cleaned: 'bad',
+        archived: 'meh',
+      };
+      return (status in map) ? map[status] : 'grey';
+    };
+    $scope.mapCiviCRMStatusToColour = function mapMailchimpStatusToColour(status) {
+      const map = {
+        Added: 'good',
+        Removed: 'meh',
+      };
+      return (status in map) ? map[status] : 'grey';
+    };
   });
 
 })(angular, CRM.$, CRM._);

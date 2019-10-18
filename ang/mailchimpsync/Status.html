@@ -6,66 +6,193 @@
   <h1 crm-page-title>{{ts('Mailchimpsync Status')}}</h1>
   <div crm-ui-debug="mcsConfig"></div>
   <div crm-ui-debug="mcsStatus"></div>
+  <div crm-ui-debug="mailingGroups"></div>
+
+  <p>
+    <button ng-click="getDetailedUpdate()">Refresh</button>
+    &nbsp; <a href ng-show="view !== 'overview'" ng-click="view='overview'" >Back to overview</a>
+    &nbsp; <a href ng-show="view !== 'detail' && selectedListId" ng-click="view='detail'" >Back to {{mailingGroups[selectedList.subscriptionGroup].title}}</a>
+    &nbsp; <a href ng-show="view !== 'cache'" ng-click="cacheView()" >Browse Cache</a>
+  </p>
 
     <!-- Overview ========================================================== -->
     <div ng-show="view === 'overview'" >
+      <p ng-repeat="(listId, list) in mcsConfig.lists" >
+        <span class="mcs-status-pill good" ng-if="mcsStatus[listId].in_sync">In sync</span>
+        <span class="mcs-status-pill meh" ng-if="!mcsStatus[listId].in_sync">Not in sync</span>
+        <a href ng-click="showDetails(listId)" >{{ mailingGroups[list.subscriptionGroup].title }} / {{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</a>
+      </p>
+    </div>
+    <!-- Detail ========================================================== -->
+    <div ng-show="view === 'detail'" >
+      <div crm-ui-debug="selectedList"></div>
+      <div crm-ui-debug="selectedListId"></div>
 
-      <div ng-repeat="(listId, list) in mcsConfig.lists" >
-        <h2>{{ mailingGroups[list.subscriptionGroup].title }}</h2>
-        <p>Sync with Mailchimp audience: <strong>{{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</strong> on account <em>{{ mcsConfig.accounts[list.apiKey].account_name }}</em></p>
-        <p>Last sync: <em>{{ (mcsStatus[listId].lastSyncTime === null) ? 'Never' : mcsStatus[listId].lastSyncTime }}</em></p>
-        <div>
-          {{ listStats=mcsStatus[listId].stats; "" }}
-          {{ listStats.subscribed_at_mailchimp }} at mailchimp<br/>
-          <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
-          <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
-          <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
-          {{ listStats.subscribed_at_civicrm }} at CiviCRM <br />
-          <code>- </code>{{ listStats.cannot_subscribe }} cannot subscribe.<br />
-          <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
-        </div>
-        <p>
-          <span class="mcs-status-pill bad" ng-if="mcsStatus[listId].stats.fail > 0">{{mcsStatus[listId].stats.fail}} Failed</span>
-          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].stats.todo > 0">{{mcsStatus[listId].stats.live}} To do</span>
-          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].stats.live > 0">{{mcsStatus[listId].stats.live}} Waiting for Mailchimp updates</span>
-          <span class="mcs-status-pill good" ng-if="mcsStatus[listId].stats.ok > 0">{{mcsStatus[listId].stats.live}} In Sync</span>
-        </p>
-
-        <p>Sync: Fetch and reconcile process:
-          <span class="mcs-status-pill meh" ng-if="mcsStatus[listId].locks.fetchAndReconcile != 'readyToFetch'">Running</span>
-          <span class="mcs-status-pill good" ng-if="mcsStatus[listId].locks.fetchAndReconcile == 'readyToFetch'">Waiting</span>
-        </p>
-        <p>Sync: Mailchimp updates:
-          <span ng-if="listStats.mailchimp_updates_pending > 0">
-            <span class="mcs-status-pill meh" >{{mcsStatus[listId].mailchimp_updates_pending}} Pending</span>
-              <span ng-if="mcsStatus[listId].batches" >
-                <span ng-if="listStats.batch_pending_operations > 0">Waiting on Mailchimp to process {{listStats.batch_pending_operations}} operations</span>
-                {{ listStats.batch_finished_operations}}/{{listStats.batch_total_operations}} done, {{listStats.batch_errored_operations}} errors
-                <span ng-if="listStats.batch_finished_operations === listStats.batch_total_operations">Batches complete, will process results</span>
-              </span>
+      <h2>{{ mailingGroups[selectedList.subscriptionGroup].title }}</h2>
+      <p>Sync with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
+      <p>Last sync: <em>{{ (mcsStatus[selectedListId].lastSyncTime === null) ? 'Never' : mcsStatus[selectedListId].lastSyncTime }}</em></p>
+      <div>
+        {{ listStats=mcsStatus[selectedListId].stats; "" }}
+        <a href ng-click="cacheView({mailchimp_list_id: selectedListId, mailchimp_status: 'subscribed'})">{{ listStats.subscribed_at_mailchimp }} at mailchimp</a><br/>
+        <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
+        <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
+        <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
+        <br />
+        <a href ng-click="cacheView({mailchimp_list_id: selectedListId, civicrm_status: 'Added'})">{{ listStats.subscribed_at_civicrm }} in CiviCRM</a>
+        <!--<a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}"></a>-->
+        <br />
+        <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />
+        <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
+      </div>
+      <p>
+        <span class="mcs-status-pill meh" ng-if="mcsStatus[selectedListId].locks.fetchAndReconcile != 'readyToFetch'">Running</span>
+        <span class="mcs-status-pill good" ng-if="mcsStatus[selectedListId].locks.fetchAndReconcile == 'readyToFetch'">Waiting</span>
+        Sync: Fetch and reconcile process
+      </p>
+      <p>
+        <span ng-if="listStats.mailchimp_updates_unsubmitted > 0">
+          <span class="mcs-status-pill meh" >Waiting</span>
+          Will submit {{listStats.mailchimp_updates_unsubmitted}} update(s) to Mailchimp</span>
+        </span>
+        <span ng-if="listStats.mailchimp_updates_unsubmitted == 0 && listStats.mailchimp_updates_pending > 0">
+          <span class="mcs-status-pill good" >Submitted</span> {{listStats.mailchimp_updates_pending}} update(s) submitted to Mailchimp
+        </span>
+        <span class="mcs-status-pill good" ng-if="listStats.mailchimp_updates_pending == 0">No outstanding updates</span>
+      </p>
+      <p>
+        <span class="mcs-status-pill grey" ng-if="!mcsStatus[selectedListId].batches" >Loading</span>
+        <span ng-if="mcsStatus[selectedListId].batches" >
+          <span ng-if="listStats.batch_pending_operations > 0">
+            <span class="mcs-status-pill meh" >In progress</span>
+            Waiting on Mailchimp to process
+            {{listStats.batch_pending_operations}} operations.
+            {{listStats.batch_finished_operations}}/{{listStats.batch_total_operations}}
+            done, {{listStats.batch_errored_operations}} errors
           </span>
+          <span ng-if="listStats.batch_pending_operations == 0">
 
-          <span class="mcs-status-pill good" ng-if="listStats.mailchimp_updates_pending == 0">Completed</span>
-        </p>
+            <span ng-if="listStats.mailchimp_updates_pending - listStats.mailchimp_updates_unsubmitted > 0">
+              <span class="mcs-status-pill meh" >In progress</span>
+              Mailchimp updates complete, waiting to check. {{ listStats.batch_finished_operations}}/{{listStats.batch_total_operations}} done, {{listStats.batch_errored_operations}} errors
+            </span>
+            <span ng-if="listStats.mailchimp_updates_pending - listStats.mailchimp_updates_unsubmitted == 0">
+              <span class="mcs-status-pill good" >Mailchimp updates complete.</span>
+            </span>
+          </span>
+        </span>
+      </p>
 
-        <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
-          <table>
-            <thead><tr><th>Date</th><th>Message</th></tr></thead>
-            <tbody>
-              <tr ng-repeat="row in mcsStatus[listId].log">
-                <td>{{row.time}}</td><td>{{row.message}}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
+      <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
+        <table>
+          <thead><tr><th>Date</th><th>Message</th></tr></thead>
+          <tbody>
+            <tr ng-repeat="row in mcsStatus[selectedListId].log">
+              <td>{{row.time}}</td><td>{{row.message}}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-    </div><!-- ends main overview-->
+    </div><!-- ends detail -->
+    <!-- Cache Inspect ========================================================== -->
+    <div ng-if="view=='cache'">
 
+      <div class="mcs-cache-filters" >
+        <form name="mcs-cache-filters" crm-ui-id-scope>
 
-  <form name="myForm" crm-ui-id-scope>
-  </form>
+          <div class="mcs-cache-filter">
+            <label crm-ui-for="cache.sync_status" >Sync status</label>
+            <select crm-ui-id="cache.sync_status"
+                    ng-model="cacheParams.sync_status"
+                    >
+                    <option value="">Any</option>
+                    <option >ok</option>
+                    <option >live</option>
+                    <option >fail</option>
+            </select>
+          </div>
+
+          <div class="mcs-cache-filter">
+          <label crm-ui-for="cache.mailchimp_status" >Mailchimp status</label>
+          <select crm-ui-id="cache.mailchimp_status"
+            ng-model="cacheParams.mailchimp_status"
+            >
+            <option value="">Any</option>
+            <option >subscribed</option>
+            <option >unsubscribed</option>
+            <option >cleaned</option>
+            <option >pending</option>
+            <option >transactional</option>
+            <option >archived</option>
+          </select>
+          </div>
+
+          <div class="mcs-cache-filter">
+          <label crm-ui-for="cache.civicrm_status" >CiviCRM status</label>
+          <select crm-ui-id="cache.civicrm_status"
+            ng-model="cacheParams.civicrm_status"
+            >
+            <option value="">Any</option>
+            <option >Added</option>
+            <option >Removed</option>
+          </select>
+          </div>
+
+          <div class="mcs-cache-filter">
+          <label crm-ui-for="cache.civicrm_status" >Email</label>
+          <input crm-ui-id="cache.mailchimp_email"
+            ng-model="cacheParams.mailchimp_email"
+            type="text"
+            />
+          </div>
+
+          <div class="mcs-cache-filter">
+          <label crm-ui-for="cache.civicrm_status" >CiviCRM Contact id</label>
+          <input crm-ui-id="cache.civicrm_contact_id"
+            ng-model="cacheParams.civicrm_contact_id"
+            type="text"
+            />
+          </div>
+
+          <div class="mcs-cache-filter">
+            <button ng-click="loadCacheData()" >Search</button>
+          </div>
+        </form>
+      </div>
+
+      <div ng-if="cacheRows === null"><span class="mcs-status-pill grey">Loading</span></div>
+
+      {{ cacheRowCount }} matches
+
+      <div ng-if="cacheRows !== null">
+        <div ng-repeat="row in cacheRows" class="mcs-cache-row">
+
+          <div class="mcs-cache-row__header">
+            <span class="mcs-status-pill {{ mapSyncStatusToColour(row.sync_status) }}" >{{row.sync_status}}</span>
+            {{ row.mailchimp_email }} / CiviCRM Contact
+            <span ng-if="!row.civicrm_contact_id">Not yet created</span>
+            <span ng-if="row.civicrm_contact_id"><a href="{{crmUrl('civicrm/contact/view', {reset:1, cid:row.civicrm_contact_id }) }}">{{ row.civicrm_contact_id }}</a></span>
+          </div>
+          <div class="mcs-cache-row__body">
+            <p>Status: Mailchimp:
+              <span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status}}</span>
+              CiviCRM:
+              <span class="mcs-status-pill {{ mapCiviCRMStatusToColour(row.civicrm_status) }}" >{{row.civicrm_status || 'Missing'}}</span>
+            </p>
+            <p>Last updated: Mailchimp:
+              {{row.mailchimp_updated}}
+              CiviCRM:
+              {{row.civicrm_updated}}
+            </p>
+          </div>
+
+        </div><!-- end of a row -->
+        <a href ng-if="cacheOptions.offset > 0"
+          ng-click="cacheOptions.offset = cacheOptions.offset - cacheOptions.limit; loadCacheData(true)">Load previous page</a>
+        <a href ng-if="(cacheOptions.offset + cacheOptions.limit) < cacheRowCount"
+          ng-click="cacheOptions.offset = cacheOptions.offset + cacheOptions.limit; loadCacheData(true)">Load next page</a>
+      </div>
+    </div>
 
 </div>
 

@@ -13,7 +13,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
     $this->completed = 1;
 
     if ($response['status_code'] == 200) {
-      $this->handleMailchimpUpdateSuccess($response['data']);
+      $this->handleMailchimpUpdateSuccess($response['response']);
     }
     else {
       // Store the error
@@ -21,7 +21,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
 
       $mailchimp_updates = json_decode($this->data, TRUE);
       if ($response['status_code'] == 400
-        && (($response['data']['title'] ?? '') === 'Member In Compliance State')
+        && (($response['response']['title'] ?? '') === 'Member In Compliance State')
         && (($mailchimp_updates['status'] ?? '') === 'subscribed')) {
 
         // Very specific case:

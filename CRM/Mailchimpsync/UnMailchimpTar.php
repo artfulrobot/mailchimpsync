@@ -19,12 +19,10 @@ class CRM_Mailchimpsync_UnMailchimpTar
       $this->source_handle = gzopen($this->source_filename, 'r');
     }
 
-    $end_of_file = FALSE;
-    while (!$end_of_file) {
+    while (!feof($this->source_handle)) {
       $data = fread($this->source_handle, 512);
 
       $chunk = new CRM_Mailchimpsync_UnMailchimpTarChunk($data);
-      $end_of_file = $chunk->end_of_file;
 
       if ($chunk->isDirectory()) {
         continue;
