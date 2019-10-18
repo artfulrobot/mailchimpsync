@@ -91,7 +91,8 @@ CREATE TABLE `civicrm_mailchimpsync_batch` (
      `completed_at` datetime    COMMENT 'Mailchimp-supplied date of completion',
      `finished_operations` int   DEFAULT 0 ,
      `errored_operations` int   DEFAULT 0 ,
-     `total_operations` int   DEFAULT 0  
+     `total_operations` int   DEFAULT 0 ,
+     `response_processed` int   DEFAULT 0 COMMENT 'Set to 1 when processing, 2 when processed' 
 ,
         PRIMARY KEY (`id`)
  

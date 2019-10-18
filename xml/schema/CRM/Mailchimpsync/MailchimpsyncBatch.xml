@@ -68,4 +68,11 @@
     <default>0</default>
   </field>
 
+  <field>
+    <name>response_processed</name>
+    <type>int</type>
+    <default>0</default>
+    <comment>Set to 1 when processing, 2 when processed</comment>
+  </field>
+
 </table>

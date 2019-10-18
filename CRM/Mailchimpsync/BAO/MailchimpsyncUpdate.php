@@ -17,7 +17,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
     }
     else {
       // Store the error
-      $this->error_response = json_encode($response['data']);
+      $this->error_response = json_encode($response['response']);
 
       $mailchimp_updates = json_decode($this->data, TRUE);
       if ($response['status_code'] == 400

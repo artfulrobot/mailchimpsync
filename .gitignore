@@ -1,1 +1,2 @@
 NetrwTreeListing*
+tests/phpunit/api/v3/Mailchimpsync/SubmitbatchesTest.php

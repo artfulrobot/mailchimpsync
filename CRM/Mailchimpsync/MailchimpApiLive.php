@@ -114,11 +114,14 @@ class CRM_Mailchimpsync_MailchimpApiLive extends CRM_Mailchimpsync_MailchimpApiB
       $guzzleClient = new Client([
         'http_errors' => TRUE, // Get exceptions from guzzle requests.
       ]);
+      // Note: Mailchimp's response file is gzipped.
+      // but this is separate to whether the HTTP response is gzip encoded.
+
       $guzzleClient->request('get', $url, [
-        'headers' => ['Accept-Encoding' => 'gzip'],
-        'decode_content' => TRUE,
-        'sink' => $filename,
+        'decode_content' => 'gzip', // Decode stream if gzip encoded.
+        'sink'           => $filename,
       ]);
+
     }
     catch (Exception $e) {
       if (file_exists($filename)) {

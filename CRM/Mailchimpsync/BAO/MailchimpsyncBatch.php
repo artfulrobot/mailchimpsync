@@ -6,10 +6,19 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
   /**
    * Called when we think a batch has completed.
    *
-   * @param array|null $data if not given, the batch status is fetched from the api
+   * @param array|null $batch_status if not given, the batch status is fetched from the api
+   * @param bool $force If true, we don't check that the batch has not been processed already.
    * @throws InvalidArgumentException if the batch has not finished.
    */
-  public function processCompletedBatch($data=NULL) {
+  public function processCompletedBatch($batch_status=NULL, $force=FALSE) {
+
+    // Check if processing is already underway.
+    if (!$force && $this->response_processed > 0) {
+      throw new InvalidArgumentException("Batch $this->id ($this->mailchimp_batch_id) "
+        . (($this->response_processed == 1) ? 'currently being' : 'already')
+        . ' processed. Use the force parameter if you want to reprocess this.'
+        );
+    }
 
     // First, fetch the batch status from the API. This ensures we download
     // from the correct URL. Without this, a spammer could POST malicious URLs
@@ -18,18 +27,22 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
     $audience = CRM_Mailchimpsync_Audience::newFromListId($this->mailchimp_list_id);
     $api = $audience->getMailchimpApi();
 
-    if (!$data) {
+    if (!$batch_status) {
       // Load the data from the API now.
-      $data = $api->get("batches/$this->mailchimp_batch_id");
+      $batch_status = $api->get("batches/$this->mailchimp_batch_id");
     }
 
-    $status = ($data['status'] ?? '');
+    $status = ($batch_status['status'] ?? '');
     if ($status !== 'finished') {
       throw new InvalidArgumentException("Batch $this->mailchimp_batch_id has not finished. Got status: $status");
     }
 
+    // Store the fact that we're starting processing.
+    $this->response_processed = 1;
+    $this->save();
+
     // OK, download the resource.
-    $tar_filename = $api->downloadBatchResponse($data['response_body_url']);
+    $tar_filename = $api->downloadBatchResponse($batch_status['response_body_url']);
 
     try {
       $untar = new CRM_Mailchimpsync_UnMailchimpTar($tar_filename);
@@ -41,12 +54,13 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
       } while ($file);
 
       // Update our batch record.
-      $this->completed_at = $data['completed_at'];
-      $this->submitted_at = $data['submitted_at'];
-      $this->finished_operations = $data['finished_operations'];
-      $this->status = $data['status'];
-      $this->errored_operations = $data['errored_operations'];
-      $this->total_operations = $data['total_operations'];
+      $this->completed_at = $batch_status['completed_at'];
+      $this->submitted_at = $batch_status['submitted_at'];
+      $this->finished_operations = $batch_status['finished_operations'];
+      $this->status = $batch_status['status'];
+      $this->errored_operations = $batch_status['errored_operations'];
+      $this->total_operations = $batch_status['total_operations'];
+      $this->response_processed = 2;
       $this->save();
     }
     catch (Exception $e) {

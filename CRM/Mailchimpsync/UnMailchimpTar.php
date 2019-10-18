@@ -16,12 +16,15 @@ class CRM_Mailchimpsync_UnMailchimpTar
   }
   public function getNextFile() {
     if (!$this->source_handle) {
-      $this->source_handle = fopen($this->source_filename, 'r');
+      $this->source_handle = gzopen($this->source_filename, 'r');
     }
 
-    while (TRUE) {
-      $chunk = new CRM_Mailchimpsync_UnMailchimpTarChunk(fread($this->source_handle, 512));
-      //print json_encode($chunk) . "\n";
+    $end_of_file = FALSE;
+    while (!$end_of_file) {
+      $data = fread($this->source_handle, 512);
+
+      $chunk = new CRM_Mailchimpsync_UnMailchimpTarChunk($data);
+      $end_of_file = $chunk->end_of_file;
 
       if ($chunk->isDirectory()) {
         continue;
@@ -38,7 +41,6 @@ class CRM_Mailchimpsync_UnMailchimpTar
     if ($length < 1) {
       throw new InvalidArgumentException("Refusing to read $length bytes.");
     }
-    //print "reading $length\n";
     $data = substr(fread($this->source_handle, $length), 0, $header->length);
     $data = json_decode($data, TRUE);
     if ($data === FALSE) {
