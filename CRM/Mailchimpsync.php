@@ -62,12 +62,22 @@ class CRM_Mailchimpsync
   }
   /**
    * Fetch batches for each API key and update our batches table.
+   *
+   * Nb. this is only done if we have any batches outstanding.
    */
   public static function fetchBatches() {
     $batches = [];
     $config = CRM_Mailchimpsync::getConfig();
 
-    foreach ($config['accounts'] as $api_key => $account_details) {
+    $list_ids = CRM_Core_DAO::executeQuery(
+      "SELECT DISTINCT mailchimp_list_id FROM civicrm_mailchimpsync_batch WHERE status != 'finished'"
+    )->fetchCol();
+    $api_keys = [];
+    foreach ($list_ids as $list_id) {
+      $api_keys[ $config['lists'][$list_id]['apiKey'] ] = 1;
+    }
+
+    foreach (array_keys($api_keys) as $api_key) {
       $api = static::getMailchimpApi($api_key);
       $result = $api->get('batches')['batches'] ?? [];
       foreach ($result as $batch) {
