@@ -328,10 +328,7 @@ class CRM_Mailchimpsync_Audience
         'is'      => 'readyToFixContactIds',
         'andLog'  => "fetchMergeMailchimpData: completed ($response[total_items] fetched).",
         // Reset the offset for next time.
-        'andAlso' => function(&$c) {
-          $c['fetch']['offset'] = 0;
-          unset($c['fetch']['since']);
-        }
+        'andAlso' => function(&$c) { $c['fetch']['offset'] = 0; }
       ]);
     }
   }
@@ -668,6 +665,8 @@ class CRM_Mailchimpsync_Audience
         WHERE cache.mailchimp_list_id = %2 ' . $where;
     CRM_Core_DAO::executeQuery($sql, $params);
 
+    $this->log("copyCiviCRMSubscriptionGroupStatus:\n$sql\n\n" . json_encode($params));
+
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
       'is'     => 'readyToReconcileQueue',
@@ -717,6 +716,7 @@ class CRM_Mailchimpsync_Audience
         'for'    => 'fetchAndReconcile',
         'is'     => 'readyToFetch', // reset for next time.
         'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
+        'andAlso' => function(&$c) { unset($c['fetch']['since']); }
       ]);
     }
     else {
