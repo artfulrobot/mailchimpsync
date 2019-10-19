@@ -122,10 +122,11 @@ class CRM_Mailchimpsync_Audience
    * it will just all run through one after another, but otherwise it can be re-run
    * and pick up where it left off.
    *
-   * @param array $params with keys:
+   * @param array $params with optional keys:
    * - time_limit: stop after this number of seconds. Default is 1 week (assumed to basically mean no time limit).
    * - since: a fixed since date that strtotime understands. Or pass an empty string meaning no limit, fetch all.
    *          if not present in parame, defaults to date last sync date.
+   * - stop_on: name the ready state you want to stop processing on, e.g. readyToSubmitUpdates
    */
   public function fetchAndReconcile($params) {
 
@@ -157,6 +158,11 @@ class CRM_Mailchimpsync_Audience
 
     while ($remaining_time > 0) {
       $status = $this->getStatus();
+      if ($params['stop_on'] ?? 'no stopping') {
+        $this->log("Stopping as requested at step $params[stop_on]");
+        return; // exit the loop completely.
+      }
+
       switch ($status['locks']['fetchAndReconcile'] ?? NULL) {
 
       // Busy states - this is to prevent a 2nd cron job firing over the top of this one.
@@ -198,10 +204,15 @@ class CRM_Mailchimpsync_Audience
 
       case 'readyToReconcileQueue':
         $stats = $this->reconcileQueueProcess($remaining_time);
-        if ($stats['done'] == $stats['count']) {
-          break 2; // Jump out of the switch, and then the while loop as we're done now.
-        }
         break;
+
+      case 'readyToSubmitUpdates':
+        $stats = $this->submitUpdatesBatches($remaining_time);
+        if ($stats['is_complete']) {
+          $this->log('fetchAndReconcile process is complete.');
+        }
+        return;
+        // break 2;
 
       default:
         throw new Exception("Invalid lock: {$status['locks']['fetchAndReconcile']}");
@@ -213,9 +224,6 @@ class CRM_Mailchimpsync_Audience
 
     if ($remaining_time <= 0) {
       $this->log('Stopping processing as out of time.');
-    }
-    else {
-      $this->log('fetchAndReconcile process is complete.');
     }
   }
   // The following methods deal with the 'fetch' phase
@@ -529,6 +537,9 @@ class CRM_Mailchimpsync_Audience
    *
    * Call this after calling populateMissingContactIds()
    *
+   * Nb. if someone comes in from Mailchimp who is not subscribed there's no
+   * point us adding them in. Instead we remove them from the cache table.
+   *
    * @param null|int time in seconds to spend.
    * @return int No. contacts created.
    */
@@ -542,14 +553,19 @@ class CRM_Mailchimpsync_Audience
     $total = 0;
     $dao = CRM_Core_DAO::executeQuery(
       'SELECT * FROM civicrm_mailchimpsync_cache WHERE mailchimp_list_id = %1 AND civicrm_contact_id IS NULL',
-      [
-        1 => [$this->mailchimp_list_id, 'String']
-      ]
+      [ 1 => [$this->mailchimp_list_id, 'String'] ]
     );
     $stop_time = time() + ($remaining_time ?? 60*60*24*7);
 
     while ($dao->fetch()) {
       $total++;
+      $id = (int) $dao->id;
+
+      if ($dao->mailchimp_status !== 'subscribed') {
+        // Only import contacts that are subscribed.
+        CRM_Core_DAO::executeQuery("DELETE FROM civicrm_mailchimpsync_cache WHERE id = $id");
+        continue;
+      }
 
       // Create contact.
       $params = [
@@ -561,7 +577,6 @@ class CRM_Mailchimpsync_Audience
 
       $contact_id = (int) civicrm_api3('Contact', 'create', $params)['id'];
 
-      $id = (int) $dao->id;
       CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = $contact_id WHERE id = $id");
       if (time() >= $stop_time) {
         // Time's up, but we're not finished.
@@ -714,7 +729,7 @@ class CRM_Mailchimpsync_Audience
     if ($stats['done'] == $stats['count']) {
       $this->updateLock([
         'for'    => 'fetchAndReconcile',
-        'is'     => 'readyToFetch', // reset for next time.
+        'is'     => 'readyToSubmitUpdates', // reset for next time.
         'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
         'andAlso' => function(&$c) { unset($c['fetch']['since']); }
       ]);
@@ -848,6 +863,48 @@ class CRM_Mailchimpsync_Audience
   }
 
   // The following methods deal with the batching phase.
+  /**
+   *
+   * Look for updates, submit up to 1000 at a time to the API.
+   *
+   * @return int number of requests sent.
+   */
+  public function submitUpdatesBatches($remaining_time) {
+    $stop_time = time() + $remaining_time;
+    $this->updateLock([
+      'for' => 'fetchAndReconcile',
+      'is' => 'busy',
+      'andLog' => 'submitUpdatesBatches: Beginning to batch up any updates...',
+    ]);
+
+    $grand_total = 0;
+    $batches = 0;
+    do {
+      $count = $this->submitBatch();
+      $grand_total += $count;
+      if ($count) {
+        $batches++;
+      }
+    } while (time() < $stop_time && $count > 0);
+
+    if ($count == 0) {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToFetch',
+        'andLog' => "submitUpdatesBatches: Completed submission of $batches batches with $grand_total updates...",
+      ]);
+      return ['batches' => $batches, 'total_operations' => $grand_total, 'is_complete' => 1];
+    }
+    else {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'is'     => 'readyToSubmitUpdates',
+        'andLog' => "submitUpdatesBatches: Out of time. $batches batches with $grand_total updates were submitted.",
+      ]);
+      return ['batches' => $batches, 'total_operations' => $grand_total, 'is_complete' => 0];
+    }
+  }
+
   /**
    *
    * Look for updates, submit up to 1000 at a time to the API.
