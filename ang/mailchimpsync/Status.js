@@ -11,22 +11,15 @@
           mcsConfig: function(crmApi) {
             return crmApi('Setting', 'getvalue', { name: 'mailchimpsync_config' }).then(r => {
               // Basic validation
-              if (!((typeof(r) === 'object') && (!Array.isArray(r)))) {
+              var result = JSON.parse(r.result);
+              if (!((typeof(result) === 'object') && (!Array.isArray(result)))) {
                 // Config is invalid.
-                console.warn("Invalid config, resetting:", r);
-                r = {lists: {}, accounts: {}};
+                console.warn("Invalid config, resetting. Received: ", r);
+                alert("Invalid configuration. Please visit Administer » System Settings » Configure Mailchimp Sync");
+                return;
               }
-
-              // PHP converts empty array to json array but we need an objects.
-              if (!(('lists' in r) && !Array.isArray(r.lists))) {
-                r.lists = {};
-              }
-              if (!(('accounts' in r) && !Array.isArray(r.accounts))) {
-                r.accounts = {};
-              }
-
-              console.info("loaded config:", r);
-              return r;
+              console.info("loaded config:", result);
+              return result;
             });
           },
           mailingGroups: function(crmApi) {

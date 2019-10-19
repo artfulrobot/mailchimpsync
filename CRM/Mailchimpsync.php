@@ -34,7 +34,7 @@ class CRM_Mailchimpsync
    * @return array.
    */
   public static function getConfig() {
-    return Civi::settings()->get('mailchimpsync_config');
+    return json_decode(Civi::settings()->get('mailchimpsync_config'), TRUE);
   }
   /**
    * Set CiviCRM setting for main config.

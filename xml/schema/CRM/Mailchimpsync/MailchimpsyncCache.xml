@@ -67,8 +67,7 @@
   <field>
     <name>mailchimp_data</name>
     <type>text</type>
-    <serialize>json</serialize>
-    <comment>Json data</comment>
+    <comment>PHP serialized data</comment>
   </field>
 
   <field>

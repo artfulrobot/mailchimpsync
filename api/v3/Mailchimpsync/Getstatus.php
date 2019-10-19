@@ -56,7 +56,13 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
     // Shorthand summary.
     $returnValues[$list_id]['in_sync'] =
       ($returnValues[$list_id]['locks']['fetchAndReconcile'] ?? 'readyToFetch') === 'readyToFetch'
-      && $returnValues[$list_id]['stats']['mailchimp_updates_pending'] === 0;
+      && $returnValues[$list_id]['stats']['mailchimp_updates_pending'] === 0
+      && !empty($returnValues[$list_id]['lastSyncTime']);
+
+    $returnValues[$list_id]['lastSyncTimeHuman'] = 'never';
+    if (!empty($returnValues[$list_id]['lastSyncTime'])) {
+      $returnValues[$list_id]['lastSyncTimeHuman'] = date('H:i:s d M Y', strtotime($returnValues[$list_id]['lastSyncTime']));
+    }
   }
 
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Getstatus');

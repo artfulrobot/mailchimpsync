@@ -158,12 +158,14 @@ class CRM_Mailchimpsync_Audience
 
     while ($remaining_time > 0) {
       $status = $this->getStatus();
-      if ($params['stop_on'] ?? 'no stopping') {
+      $current_state = $status['locks']['fetchAndReconcile'] ?? NULL;
+
+      if (($params['stop_on'] ?? 'no stopping') === $current_state) {
         $this->log("Stopping as requested at step $params[stop_on]");
         return; // exit the loop completely.
       }
 
-      switch ($status['locks']['fetchAndReconcile'] ?? NULL) {
+      switch ($current_state) {
 
       // Busy states - this is to prevent a 2nd cron job firing over the top of this one.
       case 'busy':
@@ -295,7 +297,6 @@ class CRM_Mailchimpsync_Audience
           . (($query['since_last_changed'] ?? '') ? ' since ' . $query['since_last_changed'] : ''));
         $response = $api->get("lists/$this->mailchimp_list_id/members", $query);
 
-        // Fetch (filtered) data from our mock_mailchimp_data array.
         // Insert it into our cache table.
         foreach ($response['members'] ?? [] as $member) {
           $this->mergeMailchimpMember($member);
@@ -361,9 +362,15 @@ class CRM_Mailchimpsync_Audience
     $bao->mailchimp_status = $member['status'];
     $bao->mailchimp_updated = $member['last_changed'];
 
-    // Create JSON data from Mailchimp. @todo
-    $data = [];
-    $bao->mailchimp_data = json_encode($data);
+    // Create JSON data from Mailchimp.
+    $data = [
+      'first_name' => $member['merge_fields']['FNAME'] ?? NULL,
+      'last_name'  => $member['merge_fields']['LNAME'] ?? NULL,
+      'interests'  => $member['interests'] ?? [],
+    ];
+    // Nb. while I prefer JSON for readability, PHP's serialize is a *lot*
+    // faster, which will count on a big list.
+    $bao->mailchimp_data = serialize($data);
 
     // Update
     $bao->save();
@@ -558,7 +565,6 @@ class CRM_Mailchimpsync_Audience
     $stop_time = time() + ($remaining_time ?? 60*60*24*7);
 
     while ($dao->fetch()) {
-      $total++;
       $id = (int) $dao->id;
 
       if ($dao->mailchimp_status !== 'subscribed') {
@@ -566,14 +572,21 @@ class CRM_Mailchimpsync_Audience
         CRM_Core_DAO::executeQuery("DELETE FROM civicrm_mailchimpsync_cache WHERE id = $id");
         continue;
       }
+      $total++;
 
       // Create contact.
       $params = [
         'contact_type' => 'Individual',
-        'email' => $dao->mailchimp_email,
+        'email'        => $dao->mailchimp_email,
       ];
 
-      // @todo names etc.
+      // If we have their name, use it to create contact.
+      $mailchimp_data = unserialize($dao->mailchimp_data);
+      foreach (['first_name', 'last_name'] as $field) {
+        if (!empty($mailchimp_data[$field])) {
+          $params[$field] = $mailchimp_data[$field];
+        }
+      }
 
       $contact_id = (int) civicrm_api3('Contact', 'create', $params)['id'];
 
@@ -679,8 +692,6 @@ class CRM_Mailchimpsync_Audience
         SET civicrm_status = latest.status, civicrm_updated = latest.date, sync_status = "todo"
         WHERE cache.mailchimp_list_id = %2 ' . $where;
     CRM_Core_DAO::executeQuery($sql, $params);
-
-    $this->log("copyCiviCRMSubscriptionGroupStatus:\n$sql\n\n" . json_encode($params));
 
     $this->updateLock([
       'for'    => 'fetchAndReconcile',

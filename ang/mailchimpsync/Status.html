@@ -18,8 +18,13 @@
     <!-- Overview ========================================================== -->
     <div ng-show="view === 'overview'" >
       <p ng-repeat="(listId, list) in mcsConfig.lists" >
-        <span class="mcs-status-pill good" ng-if="mcsStatus[listId].in_sync">In sync</span>
-        <span class="mcs-status-pill meh" ng-if="!mcsStatus[listId].in_sync">Not in sync</span>
+        <span ng-if="mcsStatus[listId].in_sync">
+          <span class="mcs-status-pill good">In sync</span> {{mcsStatus[listId].lastSyncTimeHuman}}
+        </span>
+        <span ng-if="!mcsStatus[listId].in_sync">
+          <span class="mcs-status-pill meh" >Not in sync</span>
+          <span ng-if="!mcsStatus[listId].lastSyncTime" >Sync never run.</span>
+        </span>
         <a href ng-click="showDetails(listId)" >{{ mailingGroups[list.subscriptionGroup].title }} / {{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</a>
       </p>
     </div>
@@ -31,7 +36,7 @@
       <h2>{{ mailingGroups[selectedList.subscriptionGroup].title }}</h2>
       <p>Sync CiviCRM <a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}">group</a>
       with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
-      <p>Last sync: <em>{{ (mcsStatus[selectedListId].lastSyncTime === null) ? 'Never' : mcsStatus[selectedListId].lastSyncTime }}</em></p>
+      <p>Last sync: <em>{{ mcsStatus[selectedListId].lastSyncTimeHuman }}</em></p>
       <div>
         {{ listStats=mcsStatus[selectedListId].stats; "" }}
         <a href ng-click="cacheView({mailchimp_list_id: selectedListId, mailchimp_status: 'subscribed'})">{{ listStats.subscribed_at_mailchimp }} at mailchimp</a><br/>
@@ -87,7 +92,7 @@
 
       <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
         <table>
-          <thead><tr><th>Date</th><th>Message</th></tr></thead>
+          <thead><tr><th style="width:12em">Date</th><th>Message</th></tr></thead>
           <tbody>
             <tr ng-repeat="row in mcsStatus[selectedListId].log">
               <td>{{row.time}}</td><td>{{row.message}}</td>

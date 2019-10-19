@@ -85,6 +85,9 @@ function civicrm_api3_mailchimpsync_Fetchandreconcile($params) {
   if (!empty($params['all'])) {
     $default_params['since'] = ''; // Force all.
   }
+  if (!empty($params['stop_on'])) {
+    $default_params['stop_on'] = $params['stop_on'];
+  }
   do {
     $audience = CRM_Mailchimpsync_Audience::newFromListId(array_shift($audiences));
     if (!empty($params['force_restart'])) {

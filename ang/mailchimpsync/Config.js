@@ -11,22 +11,30 @@
           mcsConfig: function(crmApi) {
             return crmApi('Setting', 'getvalue', { name: 'mailchimpsync_config' }).then(r => {
               // Basic validation
-              if (!((typeof(r) === 'object') && (!Array.isArray(r)))) {
+              var result = JSON.parse(r.result);
+              if (!((typeof(result) === 'object') && (!Array.isArray(result)))) {
                 // Config is invalid.
-                console.warn("Invalid config, resetting:", r);
-                r = {lists: {}, accounts: {}};
+                console.warn("Invalid config, resetting. Received: ", r);
+                result = {lists: {}, accounts: {}};
               }
 
               // PHP converts empty array to json array but we need an objects.
-              if (!(('lists' in r) && !Array.isArray(r.lists))) {
-                r.lists = {};
+              if (!(('lists' in result) && !Array.isArray(result.lists))) {
+                result.lists = {};
               }
-              if (!(('accounts' in r) && !Array.isArray(r.accounts))) {
-                r.accounts = {};
+              if (!(('accounts' in result) && !Array.isArray(result.accounts))) {
+                result.accounts = {};
               }
 
-              console.info("loaded config:", r);
-              return r;
+              console.info("loaded config:", result);
+              return result;
+            },
+            error => {
+              if (confirm("Failed to load Mailchimp Sync config. Do you want to start from scratch? Nb. you should not normally do this, it's likely that it's a temporary network problem and you should try later. Start from scratch?")) {
+                return {
+                  accounts: {}, lists: {}
+                };
+              }
             });
           },
           mailingGroups: function(crmApi) {
@@ -81,7 +89,7 @@
           {start: ts('Deleting...'), success: ts('Deleted')},
           // The save action. Note that crmApi() returns a promise.
           crmApi('Setting', 'create', {
-            mailchimpsync_config: mcsConfig
+            mailchimpsync_config: JSON.stringify(mcsConfig)
           })
         );
       }
@@ -112,7 +120,7 @@
         {start: ts('Saving...'), success: ts('Saved')},
         // The save action. Note that crmApi() returns a promise.
         crmApi('Setting', 'create', {
-          mailchimpsync_config: mcsConfig
+          mailchimpsync_config: JSON.stringify(mcsConfig)
         })
         .then(r => {
           console.log("Saved value", r);
@@ -149,7 +157,7 @@
           {start: ts('Deleting...'), success: ts('Deleted')},
           // The save action. Note that crmApi() returns a promise.
           crmApi('Setting', 'create', {
-            mailchimpsync_config: mcsConfig
+            mailchimpsync_config: JSON.stringify(mcsConfig)
           })
         );
       }
