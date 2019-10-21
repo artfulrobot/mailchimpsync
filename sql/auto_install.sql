@@ -115,13 +115,11 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
      `mailchimp_member_id` char(32)    COMMENT 'Theoretically redundant md5 of lower case email but Mailchimp has bugs',
      `mailchimp_email` varchar(255)    ,
      `mailchimp_status` varchar(20)    COMMENT 'subscribed|unsubscribed|cleaned|pending|transactional|archived',
-     `civicrm_status` varchar(8)    COMMENT 'added|removed|pending?',
      `mailchimp_updated` datetime    COMMENT 'From API\'s last_changed field',
-     `civicrm_updated` datetime    COMMENT 'Time subscription group last updated.',
-     `mailchimp_data` text    COMMENT 'Json data',
-     `civicrm_data` text    COMMENT 'Json data',
+     `mailchimp_data` text    COMMENT 'PHP serialized data',
+     `civicrm_groups` text    COMMENT 'Snapshot info about groups the contact has been added/removed since certain date, used by sync',
      `civicrm_contact_id` int unsigned    COMMENT 'FK to Contact',
-     `sync_status` varchar(4)   DEFAULT 'todo' COMMENT 'ok|todo|live|redo|fail' 
+     `sync_status` varchar(10)   DEFAULT 'todo' COMMENT 'ok|todo|live_sub|live_unsub|live_data|redo|fail' 
 ,
         PRIMARY KEY (`id`)
  

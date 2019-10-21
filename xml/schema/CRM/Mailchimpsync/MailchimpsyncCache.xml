@@ -46,22 +46,9 @@
   </field>
 
   <field>
-    <name>civicrm_status</name>
-    <type>varchar</type>
-    <length>8</length>
-    <comment>added|removed|pending?</comment>
-  </field>
-
-  <field>
     <name>mailchimp_updated</name>
     <type>datetime</type>
     <comment>From API's last_changed field</comment>
-  </field>
-
-  <field>
-    <name>civicrm_updated</name>
-    <type>datetime</type>
-    <comment>Time subscription group last updated.</comment>
   </field>
 
   <field>
@@ -71,10 +58,9 @@
   </field>
 
   <field>
-    <name>civicrm_data</name>
+    <name>civicrm_groups</name>
     <type>text</type>
-    <serialize>json</serialize>
-    <comment>Json data</comment>
+    <comment>Snapshot info about groups the contact has been added/removed since certain date, used by sync</comment>
   </field>
 
   <field>
@@ -92,9 +78,9 @@
   <field>
     <name>sync_status</name>
     <type>varchar</type>
-    <length>4</length>
+    <length>10</length>
     <default>'todo'</default>
-    <comment>ok|todo|live|redo|fail</comment>
+    <comment>ok|todo|live_sub|live_unsub|live_data|redo|fail</comment>
   </field>
 
   <index>

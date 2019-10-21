@@ -372,7 +372,7 @@ class CRM_Mailchimpsync_Audience
     $sql = "
       UPDATE civicrm_mailchimpsync_cache mc
         LEFT JOIN civicrm_contact cc ON mc.civicrm_contact_id = cc.id AND cc.is_deleted = 0
-         SET civicrm_contact_id = NULL, civicrm_data = NULL, sync_status = 'todo'
+         SET civicrm_contact_id = NULL, civicrm_groups = NULL, sync_status = 'todo'
        WHERE mc.civicrm_contact_id IS NOT NULL
              AND cc.id IS NULL
              AND mc.mailchimp_list_id = %1;";
@@ -639,36 +639,19 @@ class CRM_Mailchimpsync_Audience
       'andLog' => "identifyGroupContactChanges: Copying CiviCRM's subscription group update dates " . ($since ? "since $since" : ''),
     ]);
 
-    CRM_Mailchimpsync::ensureGroupMembershipTableExists($since);
+    // The sync routine is typically called for a set of audiences.
+    // The following method updates the table for ALL groups, as it's quicker
+    // to do it in one fell swoop. The method will only do anything once per run.
+    CRM_Mailchimpsync::updateGroupsInCacheTable($since);
 
-    if (!$since) {
-      // As we have no since date, just mark them all todo.
-      CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache
-        SET sync_status = 'todo' WHERE mailchimp_list_id = %1 AND sync_status != 'todo'",
-        [1 => [$this->getListId(), 'String']]
-      );
-    }
-    else {
-      // As we have a 'since' date, mark those changed since then.
-      $group_ids = implode(', ', $this->getGroupIds());
-      $params = [
-        1 => [$this->getListId(), 'String'],
-        2 => [date('YmdHis', strtotime($since)), 'String'],
-      ];
-      $sql = "
-        UPDATE civicrm_mailchimpsync_cache cache
-           SET sync_status = 'todo'
-         WHERE cache.mailchimp_list_id = %1
-               AND sync_status != 'todo'
-               AND EXISTS (
-                SELECT contact_id
-                  FROM temp_mailchimp_group_contact t
-                 WHERE t.contact_id = cache.contact_id
-                       AND t.group_id IN ($group_ids)
-                       AND t.date >= %2)";
-
-      CRM_Core_DAO::executeQuery($sql, $params);
-    }
+    // Without a 'since' limit, everything is todo.  If we do have a 'since'
+    // date, mark those changed since then which we can determine by the
+    // presence of anything in the civicrm_groups field.
+    CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache
+        SET sync_status = 'todo' WHERE mailchimp_list_id = %1 AND sync_status != 'todo'"
+        . ($since ? ' AND civicrm_groups IS NOT NULL' : ''),
+      [1 => [$this->getListId(), 'String']]
+    );
 
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
@@ -691,21 +674,18 @@ class CRM_Mailchimpsync_Audience
     ]);
     $stop_time = ($max_time > 0) ? time() + $max_time : FALSE;
 
-    CRM_Mailchimpsync::ensureGroupMembershipTableExists($relevant_since);
     $params = [1 => [$this->getListId(), 'String']];
     $cache_id_to_subs = CRM_Core_DAO::executeQuery(
-      "SELECT c.id, s.subs
+      "SELECT c.id
         FROM civicrm_mailchimpsync_cache c
-        LEFT JOIN temp_mailchimpsync_subscriptions s
-                  ON c.civicrm_contact_id = s.contact_id
        WHERE c.mailchimp_list_id = %1
              AND sync_status = 'todo'
       ",
       $params
-    )->fetchMap('id', 'subs');
+    )->fetchMap('id', 'id');
 
     $done = 0;
-    foreach ($cache_id_to_subs as $cache_id => $subs) {
+    foreach ($cache_id_to_subs as $cache_id) {
       if ($stop_time && (time() > $stop_time)) {
         // Time to stop.
         break;
@@ -713,7 +693,7 @@ class CRM_Mailchimpsync_Audience
       $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
       $dao->id = $cache_id;
       $dao->find(TRUE);
-      $this->reconcileQueueItem($dao, $subs);
+      $this->reconcileQueueItem($dao);
       $done++;
     }
 
@@ -742,14 +722,12 @@ class CRM_Mailchimpsync_Audience
    * This will result in the item having status 'ok', or 'live' if mailchimp updates are queued.
    *
    * @param CRM_Mailchimpsync_DAO_MailchimpsyncCache $dao
-   * @param string $subs A list like:
-   *  '<groupid>;<status>;<date>|<groupid>;<status>;<date>|...'
    */
-  public function reconcileQueueItem(CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry, $subs) {
+  public function reconcileQueueItem(CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry) {
 
     $mailchimp_updates = [];
     try {
-      $subs = $this->parseSubs($subs, $cache_entry);
+      $subs = $this->parseSubs($cache_entry);
       $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
       $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
       // @todo other reconcilation operations.
@@ -1031,7 +1009,8 @@ class CRM_Mailchimpsync_Audience
   /**
    * Unpack the GROUP_CONCAT generated field.
    *
-   * @param string $subs
+   * @param CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry
+   *
    * @return array structure: {
    *    <group_id>: {
    *      status: 'Added',
@@ -1041,7 +1020,7 @@ class CRM_Mailchimpsync_Audience
    *  ...
    * }
    */
-  public function parseSubs($subs, CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry) {
+  public function parseSubs(CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry) {
     $output = [];
 
     // Default status sets mostRecent to Mailchimp, since that must be true if
@@ -1057,8 +1036,8 @@ class CRM_Mailchimpsync_Audience
       ? strtotime($cache_entry->mailchimp_updated)
       : NULL;
 
-    if ($subs) {
-      foreach (explode('|', $subs) as $_) {
+    if ($cache_entry->civicrm_groups) {
+      foreach (explode('|', $cache_entry->civicrm_groups) as $_) {
         $details = explode(';', $_);
 
         if (isset($output[$details[0]])) {
