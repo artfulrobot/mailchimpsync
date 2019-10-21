@@ -40,9 +40,10 @@ class CRM_Mailchimpsync
   /**
    * Set CiviCRM setting for main config.
    *
+   * @param array $config
    */
   public static function setConfig($config) {
-    Civi::settings()->set('mailchimpsync_config', $config);
+    Civi::settings()->set('mailchimpsync_config', json_encode($config));
   }
   /**
    * Submit batches for all lists.
@@ -117,7 +118,7 @@ class CRM_Mailchimpsync
     if (!static::$temp_group_contact_created) {
       // Get array of groups we care about
       $group_ids = [];
-      $config = $this->getConfig();
+      $config = static::getConfig();
       foreach ($config['lists'] as $list) {
         $group_ids[] = (int) $list['subscriptionGroup'];
         foreach ($list['interests'] ?? [] as $group_id) {
@@ -141,8 +142,9 @@ class CRM_Mailchimpsync
         $params = [];
       }
 
+      CRM_Core_DAO::executeQuery("DROP TABLE IF EXISTS temp_mailchimpsync_subscriptions;");
       $sql = "
-        CREATE TEMPORARY TABLE temp_mailchimpsync_subscriptions
+        CREATE TABLE temp_mailchimpsync_subscriptions
         SELECT contact_id, GROUP_CONCAT(CONCAT_WS(';', group_id, status, date) SEPARATOR '|') subs
         FROM civicrm_subscription_history h1
         WHERE
@@ -166,7 +168,7 @@ class CRM_Mailchimpsync
 
       // I think adding the primary key after loading the data should be faster than
       // defining a primary key to begin with.
-      CRM_Core_DAO::executeQuery("ALTER TABLE temp_mailchimpsync_subscriptions ADD PRIMARY KEY contact_id;");
+      CRM_Core_DAO::executeQuery("ALTER TABLE temp_mailchimpsync_subscriptions ADD PRIMARY KEY (contact_id);");
     }
   }
 }

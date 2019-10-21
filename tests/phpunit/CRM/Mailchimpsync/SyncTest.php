@@ -49,6 +49,9 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $this->yesterday = date('Y-m-d', strtotime('yesterday'));
     // Clean out our sync table (don't use TRUNCATE, doesn't play well with transactional rollback)
     CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_cache');
+    CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_batch');
+    CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_update');
+    CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_status');
 
     parent::setUp();
   }
@@ -57,6 +60,14 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     parent::tearDown();
   }
 
+	public function testAA() {
+    $this->assertEquals(0, civicrm_api3('Contact', 'getcount',['contact_type' => 'Individual', 'display_name'=> 'foofs']));
+    $result = civicrm_api3('Contact', 'create',['contact_type' => 'Individual', 'display_name'=> 'foofs']);
+    CRM_Mailchimpsync::ensureGroupMembershipTableExists(FALSE);
+	}
+	public function testAA1() {
+    $this->assertEquals(0, civicrm_api3('Contact', 'getcount',['contact_type' => 'Individual', 'display_name'=> 'foofs']));
+	}
   /**
    * Basic test that we're able to get an API object.
    */
@@ -196,16 +207,19 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     // Get audience for this list.
     $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
 
+
+    // Put a 'busy' lock in place.
     $this->assertTrue($audience->attemptToObtainLock([
       'for' => 'fetchAndReconcile',
-      'to'  => 'fetch',
+      'to'  => 'busy',
       'if'  => 'readyToFetch',
     ]), "Expected to be able to obtain a lock.");
 
-    $audience->mergeMailchimpData();
+    // Simulate a 2nd async process
+    $audience->fetchAndReconcile([]);
     $status = $audience->getStatus();
-    $this->assertEquals('fetch', $status['locks']['fetchAndReconcile']);
-
+    $this->assertEquals('Called but locks say process already busy. Will not do anything.', $status['log'][0]['message'] ?? '');
+    $this->assertEquals('busy', $status['locks']['fetchAndReconcile']);
   }
 
   /**
@@ -355,16 +369,16 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
   }
   public function testContactsCreated() {
     // Create records without contact id.
-    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email)
-            VALUES(%1, 'list_1', %2)";
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email, mailchimp_status)
+            VALUES(%1, 'list_1', %2, 'subscribed')";
     CRM_Core_DAO::executeQuery($sql, [
       1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
       2 => ['contact1@example.com', 'String'],
     ]);
 
     $contact_2 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2', 'email' => 'contact2@example.com'])['id'];
-    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email, civicrm_contact_id)
-            VALUES(%1, 'list_1', %2, %3)";
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, mailchimp_email, civicrm_contact_id, mailchimp_status)
+            VALUES(%1, 'list_1', %2, %3, 'subscribed')";
     CRM_Core_DAO::executeQuery($sql, [
       1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
       2 => ['contact2@example.com', 'String'],
@@ -477,8 +491,12 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
       $bao->mailchimp_status = $mailchimp_status;
       $bao->mailchimp_updated = $mailchimp_updated;
     }
+
+    $mock_subs = $civicrm_status
+      ? $audience->getSubscriptionGroup() . ";$civicrm_status;$civicrm_updated"
+      : NULL;
+
     if ($civicrm_status) {
-      $bao->civicrm_status = $civicrm_status;
       if ($civicrm_status === 'Added') {
         $bao->subscribeInCiviCRM($audience);
       }
@@ -492,17 +510,29 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
         $contacts = [$bao->civicrm_contact_id];
         CRM_Contact_BAO_GroupContact::removeContactsFromGroup(
           $contacts, $audience->getSubscriptionGroup(), 'MCsync', 'Deleted');
-        $bao->civicrm_status = 'Deleted';
       }
+
       // Allow overriding the civicrm_updated for test.
+      /*
+      CRM_Core_DAO::executeQuery(
+        'UPDATE civicrm_subscription_history
+          SET date = %1
+          WHERE contact_id = %2 AND group_id = %3',
+        [
+          1 => [$civicrm_updated, 'String'],
+          2 => [$bao->civicrm_contact_id, 'Integer'],
+          3 => [$audience->getSubscriptionGroup(), 'Integer']
+        ]);
       $bao->civicrm_updated = $civicrm_updated;
+      */
 
     }
     $bao->save();
 
     // Now it's all set up, run reconciliation then test expected outcomes.
     $updates = [];
-    $audience->reconcileSubscriptionGroup($updates, $bao);
+    $subs = $audience->parseSubs($mock_subs, $bao);
+    $audience->reconcileSubscriptionGroup($updates, $bao, $subs);
 
     $this->assertEquals($data['expected_mailchimp_updates'], $updates, "$description Mailchimp updates differ");
 
@@ -695,7 +725,8 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $audience = $_->audience;
 
     // Call the thing we want to test:
-    $audience->reconcileQueueItem($cache_entry);
+    $mock_subs = $audience->getSubscriptionGroup() . ';Added;' . date('Y-m-d H:i:s');
+    $audience->reconcileQueueItem($cache_entry, $mock_subs);
 
     // Now check that we have an update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
@@ -722,7 +753,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Call the thing we want to test.
     // We give it 60s to complete. It should take milliseconds but hey.
-    $audience->reconcileQueueProcess(60);
+    $audience->reconcileQueueProcess(60, FALSE);
 
     // Now check that we have an update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
