@@ -22,13 +22,8 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
     'description' => E::ts('New jobs will not be started after this many seconds have elapsed. Set to 0 for no limit (good for CLI-driven crons). Defaults to 5 mins.'),
     'api.default' => 300,
   ];
-  $spec['all'] = [
-    'description' => E::ts('Fetch and reconcile all contacts, not just those since the last sync'),
-    'type'        => CRM_Utils_Type::T_BOOLEAN,
-    'api.default' => FALSE,
-  ];
   $spec['since'] = [
-    'description' => E::ts('Fetch and reconcile contacts since this date time (do not use with "all")'),
+    'description' => E::ts('Fetch and reconcile contacts since this date time (or use "ever")'),
   ];
 	$spec['id']['api.aliases'] = ['group_id'];
 }
@@ -81,9 +76,6 @@ function civicrm_api3_mailchimpsync_Fetchandreconcile($params) {
   $default_params = [];
   if (!empty($params['since'])) {
     $default_params['since'] = $params['since'];
-  }
-  if (!empty($params['all'])) {
-    $default_params['since'] = ''; // Force all.
   }
   if (!empty($params['stop_on'])) {
     $default_params['stop_on'] = $params['stop_on'];

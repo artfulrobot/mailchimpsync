@@ -65,15 +65,15 @@ class CRM_Mailchimpsync
   /**
    * Fetch batches for each API key and update our batches table.
    *
-   * Nb. this is only done if we have any batches outstanding.
+   * Nb. this is only done when we have not processed all batches.
    */
   public static function fetchBatches() {
     $batches = [];
     $config = CRM_Mailchimpsync::getConfig();
 
     $list_ids = CRM_Core_DAO::executeQuery(
-      "SELECT DISTINCT mailchimp_list_id FROM civicrm_mailchimpsync_batch WHERE status != 'finished'"
-    )->fetchCol();
+      "SELECT DISTINCT mailchimp_list_id i FROM civicrm_mailchimpsync_batch WHERE response_processed = 0"
+    )->fetchMap('i', 'i');
     $api_keys = [];
     foreach ($list_ids as $list_id) {
       $api_keys[ $config['lists'][$list_id]['apiKey'] ] = 1;
@@ -98,9 +98,10 @@ class CRM_Mailchimpsync
           $batches[$bao->mailchimp_list_id][$bao->mailchimp_batch_id] = $_;
 
           // If the process has completed, process it now instead of waiting for the webhook.
-          if ($bao->status === 'finished') {
-            // DISABLED $bao->processCompletedBatch($batch);
-          }
+          // The risk here is that it takes too long and we hit a timeout.
+          // if ($bao->status === 'finished') {
+          //   $bao->processCompletedBatch($batch);
+          // }
         }
       }
     }
@@ -136,7 +137,7 @@ class CRM_Mailchimpsync
     }
 
     if ($relevant_since) {
-      $and_since = "AND h1.date >= %2";
+      $and_since = "AND h1.date >= %1";
       $params = [1 => [date('YmdHis', $relevant_since), 'Date']];
     }
     else {

@@ -159,7 +159,7 @@ class CRM_Mailchimpsync_Audience
       case 'readyToFetch':
         $params = ['max_time' => $remaining_time];
         if ($relevant_since !== FALSE) {
-          $params['since'] = date(DATE_ISO8601, $relevant_since);
+          $params['since'] = $relevant_since;
         }
         $this->mergeMailchimpData($params);
         break;
@@ -215,6 +215,48 @@ class CRM_Mailchimpsync_Audience
       $this->log('Stopping processing as out of time.');
     }
   }
+  /**
+   * Abort a sync.
+   */
+  public function abortSync() {
+    // First, find any batches to do with this sync and try to cancel them.
+    $batches = CRM_Core_DAO::executeQuery(
+      'SELECT mailchimp_batch_id b
+       FROM civicrm_mailchimpsync_batch
+       WHERE mailchimp_list_id = %1 AND status != "finished"',
+      [1 => [$this->mailchimp_list_id, 'String']])->fetchMap('b', 'b');
+    $api = $this->getMailchimpApi();
+    foreach ($batches as $batch_id) {
+      $api->delete("batches/$batch_id");
+    }
+
+    // Any live sync updates: set the cache status to fail and the update to completed with error.
+    CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_mailchimpsync_cache c
+      INNER JOIN civicrm_mailchimpsync_update u ON c.id = u.mailchimpsync_cache_id
+      SET sync_status = "fail", error_response = "Sync was aborted", completed = 1
+      WHERE u.completed = 0 AND c.mailchimp_list_id = %1',
+      [1 => [$this->mailchimp_list_id, 'String']]
+    );
+
+    // Update our batch record(s) to 'aborted'
+    CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_mailchimpsync_batch
+      SET status = "aborted"
+       WHERE mailchimp_list_id = %1 AND status != "finished"',
+      [1 => [$this->mailchimp_list_id, 'String']]);
+
+    // Finally, release any locks.
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'to'     => 'readyToFetch',
+      'andLog' => 'Abort!',
+      'andAlso' => function(&$s) {
+        $s['fetch']['offset'] = 0;
+      }
+    ]);
+  }
+  // The following are mostly internal.
   // The following methods deal with the 'fetch' phase
   /**
    * Merge subscriber data form Mailchimp into our table.
@@ -734,6 +776,21 @@ class CRM_Mailchimpsync_Audience
 
       if ($mailchimp_updates) {
         $cache_entry->sync_status = 'live';
+        /*
+        // It's helpful for the status page to distinguish types of pending updates.
+        if ($mailchimp_updates['status'] === 'unsubscribed') {
+          $cache_entry->sync_status = 'live_unsub';
+        }
+        else {
+          if ($cache_entry->mailchimp_status === 'subscribed') {
+            // Alreday subscribed this must just be a data update.
+            $cache_entry->sync_status = 'live_data';
+          }
+          else {
+            $cache_entry->sync_status = 'live_sub';
+          }
+        }
+         */
         $cache_entry->save();
 
         // Queue a mailchimp update.
@@ -1084,11 +1141,15 @@ class CRM_Mailchimpsync_Audience
     if (($status['fetch']['offset'] ?? 0) === 0) {
       // This is the START of a new sync process, so we check for 'since' in the params.
 
-      if (!empty($params['since'])) {
-        // Use passed-in since datetime. Nb. we allow 2 hours overlap to be safe.
+      if (isset($params['since'])) {
+        if ($params['since'] === 'ever') {
+          // Forced no 'since' value.
+          return FALSE;
+        }
+        // Use passed-in since datetime.
         $_ = strtotime($params['since']);
         if ($_) {
-          return $_ - 2*60*60;
+          return $_ - 2*60*60; // Nb. we allow 2 hours overlap to be safe.
         }
         // Invalid since date.
         throw new InvalidArgumentException("Could not parse 'since' date.");
@@ -1156,21 +1217,25 @@ class CRM_Mailchimpsync_Audience
   public function getStats() {
 
     // Count of sync statuses.
-    $params = [1 => [$this->mailchimp_list_id, 'String']];
+    $params = [
+      1 => [$this->mailchimp_list_id, 'String'],
+      2 => [$this->getSubscriptionGroup(), 'Integer']
+    ];
 
-    $sql = "SELECT sync_status, COALESCE(mailchimp_status, 'missing') mailchimp_status, COALESCE(civicrm_status, 'missing') civicrm_status, COUNT(*) c
-      FROM civicrm_mailchimpsync_cache
+    $sql = "SELECT sync_status, COALESCE(mailchimp_status, 'missing') mailchimp_status, COALESCE(gc.status, 'missing') civicrm_status, COUNT(*) c
+      FROM civicrm_mailchimpsync_cache c
+      LEFT JOIN civicrm_group_contact gc ON c.civicrm_contact_id = gc.contact_id AND gc.group_id = %2
       WHERE mailchimp_list_id = %1
       GROUP BY sync_status, mailchimp_status, civicrm_status";
     $result = CRM_Core_DAO::executeQuery($sql, $params)->fetchAll();
     $stats = [
-      'failed' => 0,
-      'subscribed_at_mailchimp' => 0,
-      'subscribed_at_civicrm' => 0,
-      'to_add_to_mailchimp' => 0,
-      'cannot_subscribe' => 0,
+      'failed'                   => 0,
+      'subscribed_at_mailchimp'  => 0,
+      'subscribed_at_civicrm'    => 0,
+      'to_add_to_mailchimp'      => 0,
+      'cannot_subscribe'         => 0,
       'to_remove_from_mailchimp' => 0,
-      'weird' => [],
+      'weird'                    => [],
     ];
     foreach ($result as $row) {
       if ($row['sync_status'] === 'fail') {
