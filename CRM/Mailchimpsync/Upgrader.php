@@ -41,6 +41,7 @@ class CRM_Mailchimpsync_Upgrader extends CRM_Mailchimpsync_Upgrader_Base {
    */
   public function uninstall() {
    $this->executeSqlFile('sql/delete-mailchimpsync_status-table.sql');
+   // @todo test this works
   }
 
   /**

@@ -116,7 +116,7 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
      `mailchimp_email` varchar(255)    ,
      `mailchimp_status` varchar(20)    COMMENT 'subscribed|unsubscribed|cleaned|pending|transactional|archived',
      `mailchimp_updated` datetime    COMMENT 'From API\'s last_changed field',
-     `mailchimp_data` text    COMMENT 'PHP serialized data',
+     `mailchimp_data` blob    COMMENT 'PHP serialized data',
      `civicrm_groups` text    COMMENT 'Snapshot info about groups the contact has been added/removed since certain date, used by sync',
      `civicrm_contact_id` int unsigned    COMMENT 'FK to Contact',
      `sync_status` varchar(10)   DEFAULT 'todo' COMMENT 'ok|todo|live_sub|live_unsub|live_data|redo|fail' 

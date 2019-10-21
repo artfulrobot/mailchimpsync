@@ -53,7 +53,7 @@
 
   <field>
     <name>mailchimp_data</name>
-    <type>text</type>
+    <type>blob</type>
     <comment>PHP serialized data</comment>
   </field>
 

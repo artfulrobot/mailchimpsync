@@ -88,6 +88,10 @@
             </span>
           </span>
         </span>
+        <span ng-if="!isLoading && !mcsStatus[selectedListId].batches"
+          class="mcs-status-pill good"
+          >No batches pending</span>
+        </span>
       </p>
 
       <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">

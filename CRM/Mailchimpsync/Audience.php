@@ -744,7 +744,7 @@ class CRM_Mailchimpsync_Audience
     if ($stats['done'] == $stats['count']) {
       $this->updateLock([
         'for'    => 'fetchAndReconcile',
-        'to'     => 'readyToSubmitUpdates', // reset for next time.
+        'to'     => 'readyToSubmitUpdates',
         'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
         'andAlso' => function(&$c) { unset($c['fetch']['since']); }
       ]);
@@ -752,7 +752,7 @@ class CRM_Mailchimpsync_Audience
     else {
       $this->updateLock([
         'for'    => 'fetchAndReconcile',
-        'to'     => 'readyToReconcileQueue',
+        'to'     => 'readyToReconcileQueue', // reset for next time.
         'andLog' => "reconcileQueueProcess: Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time.",
       ]);
     }
@@ -775,26 +775,14 @@ class CRM_Mailchimpsync_Audience
         // This is not an unsubscribe request, so process other data, too.
 
         $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
+
         // @todo other reconcilation operations.
+        // via hook.
+
       }
 
       if ($mailchimp_updates) {
         $cache_entry->sync_status = 'live';
-        /*
-        // It's helpful for the status page to distinguish types of pending updates.
-        if ($mailchimp_updates['status'] === 'unsubscribed') {
-          $cache_entry->sync_status = 'live_unsub';
-        }
-        else {
-          if ($cache_entry->mailchimp_status === 'subscribed') {
-            // Alreday subscribed this must just be a data update.
-            $cache_entry->sync_status = 'live_data';
-          }
-          else {
-            $cache_entry->sync_status = 'live_sub';
-          }
-        }
-         */
         $cache_entry->save();
 
         // Queue a mailchimp update.
