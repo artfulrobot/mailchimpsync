@@ -8,6 +8,7 @@
 
 class CRM_Mailchimpsync
 {
+  protected static $temp_group_contact_created=FALSE;
   /**
    * Returns an API object for the given key.
    *
@@ -103,5 +104,69 @@ class CRM_Mailchimpsync
       }
     }
     return $batches;
+  }
+  /**
+   * Create a temporary table with each contact and the details of their latest
+   * status in relation to the groups we care about.
+   *
+   * This table can then be used for subscription group and interest group syncs.
+   *
+   * @param mixed $relevant_since
+   */
+  public function ensureGroupMembershipTableExists($relevant_since) {
+    if (!static::$temp_group_contact_created) {
+      // Get array of groups we care about
+      $group_ids = [];
+      $config = $this->getConfig();
+      foreach ($config['lists'] as $list) {
+        $group_ids[] = (int) $list['subscriptionGroup'];
+        foreach ($list['interests'] ?? [] as $group_id) {
+          $group_ids[] = (int) $group_id;
+        }
+      }
+      if ($group_ids) {
+        $group_ids_clause = "group_id IN (" . implode(',', $group_ids) . ')';
+      }
+      else {
+        // In the case that there's no groups (e.g. just set up), just create an empty table.
+        $group_ids_clause = '0';
+      }
+
+      if ($relevant_since) {
+        $and_since = "AND h1.date >= %2";
+        $params = [1 => [date(DATE_ISO8601, $relevant_since), 'String']];
+      }
+      else {
+        $and_since = '';
+        $params = [];
+      }
+
+      $sql = "
+        CREATE TEMPORARY TABLE temp_mailchimpsync_subscriptions
+        SELECT contact_id, GROUP_CONCAT(CONCAT_WS(';', group_id, status, date) SEPARATOR '|') subs
+        FROM civicrm_subscription_history h1
+        WHERE
+          $group_ids_clause
+          AND contact_id IS NOT NULL
+          $and_since
+          AND NOT EXISTS (
+            SELECT id FROM civicrm_subscription_history h2
+            WHERE h2.group_id = h1.group_id
+            AND h2.contact_id = h1.contact_id
+            AND h2.id > h1.id)
+        GROUP BY contact_id;";
+
+      // Increase the max length for group concat.
+      CRM_Core_DAO::executeQuery("SET SESSION group_concat_max_len = 1000000;");
+      // Nb. the following line is supposed to be the same, it's unclear to me when you would choose one or the other.
+      // CRM_Core_DAO::executeQuery("SET @@SESSION.group_concat_max_len = 1000000;");
+
+      // Create the table.
+      CRM_Core_DAO::executeQuery($sql, $params);
+
+      // I think adding the primary key after loading the data should be faster than
+      // defining a primary key to begin with.
+      CRM_Core_DAO::executeQuery("ALTER TABLE temp_mailchimpsync_subscriptions ADD PRIMARY KEY contact_id;");
+    }
   }
 }
