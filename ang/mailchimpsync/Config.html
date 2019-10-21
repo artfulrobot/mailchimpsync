@@ -11,23 +11,52 @@
     <!-- Overview ========================================================== -->
     <div ng-show="view === 'overview'" >
 
-      <h2>{{ts('Audience-Group subcription syncs')}}</h2>
+      <h2>{{ts('Groups to sync')}}</h2>
       <p>{{ts('The following CiviCRM groups and Mailchimp Audiences are to be kept in sync')}}</p>
       <table>
         <thead>
-          <tr><th>{{ts('Mailchimp Audience')}}</th><th>{{ts('CiviCRM Group')}}</th><th>{{ts('Actions')}}</th></tr>
+          <tr>
+            <th>{{ts('CiviCRM Group')}}</th>
+            <th>{{ts('Mailchimp Audience')}}</th>
+            <th>{{ts('Mailchimp Interest')}}</th>
+            <th>{{ts('Actions')}}</th>
+          </tr>
         </thead>
         <tbody>
-          <tr ng-repeat="(listId, list) in mcsConfig.lists" >
-            <td>{{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</td>
-            <td>{{ mailingGroups[list.subscriptionGroup].title }}</td>
-            <td><a href ng-click="listEdit(listId)">{{ts('Edit')}}</a>
-              |
-              <a href ng-click="listDelete(listId)">{{ts('Delete')}}</a></td>
+          <tr ng-repeat="row in syncRows" >
+            <td>{{ row.groupName }}</td>
+
+            <td>{{ row.listName }}</td>
+
+            <td><!-- interest name, or link for new interest -->
+              <a href
+                 ng-if="row.interestName === '_new_'"
+                 ng-click="interestEdit(row.listId, row.interestId)"
+                 >{{ts('Add new interest sync')}}
+              </a>
+              <span ng-if="row.interestName !== '_new_'">{{ row.interestName }}</span>
+            </td>
+
+            <td><!-- actions -->
+              <span ng-if="row.interestName">
+                <span ng-if="row.interestName !== '_new_'">
+                  <a href ng-click="interestEdit(row.listId, row.interestId)">{{ts('Edit')}}</a>
+                  | <a href ng-click="interestDelete(row.listId, row.interestId)">{{ts('Delete')}}</a>
+                </span>
+              </span>
+              <span ng-if="!row.interestName">
+                <a href ng-click="listEdit(row.listId)">{{ts('Edit')}}</a> |
+                <a href ng-click="listDelete(row.listId)">{{ts('Delete')}}</a></td>
+              </span>
+            </td>
+          </tr>
+
+          <tr>
+            <td></td><td><a href ng-click="listEdit()" >{{ts('Add new subscription sync')}}</a></td>
+            <td></td><td></td>
           </tr>
         </tbody>
       </table>
-      <a href ng-click="listEdit()" >{{ts('Add new subscription sync')}}</a>
 
       <h2>{{ts('Mailchimp Accounts')}}</h2>
       <table>
@@ -125,6 +154,49 @@
 
       <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
       <button ng-click="listSave()" >{{ts('Save')}}</button>
+    </div>
+
+    <!-- Edit interest ========================================================== -->
+    <div ng-show="view === 'editInterest'" >
+      <h2>{{ts('Edit Interest-Group sync')}}</h2>
+      <div crm-ui-debug="editData"></div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.interestId" >{{ts('Mailchimp interest')}}</label>
+        <select
+          crm-ui-id="editData.interestId"
+          ng-model="editData.interestId"
+          crm-ui-select="{allowClear:false, width: '100%'}"
+          name="interestId"
+          class="crm-form-text"
+          placeholder="{{ts('Mailchimp Interest')}}"
+          >
+            <option ng-repeat="(interestId, name) in editData.options"
+                    value="{{interestId}}"
+                    >{{name}}</select>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="" crm-ui-for="editData.groupId" >{{ts('CiviCRM Group')}}</label>
+        <select
+          crm-ui-id="editData.groupId"
+          ng-model="editData.groupId"
+          crm-ui-select="{allowClear:false, width: '100%'}"
+          name="group_id"
+          class="crm-form-text"
+          placeholder="{{ts('CiviCRM Group')}}"
+          >
+          <option ng-repeat="group in mailingGroups"
+                  value="{{group.id}}">
+            {{group.title}}
+          </option>
+        </select>
+      </div>
+
+      <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
+      <button ng-click="interestSave()" >{{ts('Save')}}</button>
+    </div>
 
   </form>
 

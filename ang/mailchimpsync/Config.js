@@ -64,6 +64,33 @@
     $scope.editData = null;
     $scope.mailingGroups = mailingGroups;
 
+    $scope.$watch('mcsConfig.lists', function(newValue, oldValue, scope) {
+      const rows = [];
+      console.log("syncRows called");
+      for (const listId in newValue) {
+        const list = newValue[listId];
+        rows.push({
+          listId,
+          listName: mcsConfig.accounts[list.apiKey].audiences[listId].name,
+          groupName: mailingGroups[list.subscriptionGroup].title
+        });
+        for (const interestId in newValue[listId].interests) {
+          rows.push({
+            listId,
+            interestId,
+            interestName: mcsConfig.accounts[list.apiKey].audiences[listId].interests[interestId],
+            groupName: mailingGroups[list.interests[interestId]].title
+          });
+        }
+        rows.push({
+          listId,
+          interestName: '_new_',
+          groupName: '',
+        });
+      }
+      scope.syncRows = rows;
+    }, true);
+
     $scope.listEdit = function listEdit(listId) {
       console.log('listEdit', listId);
       $scope.editData = {
@@ -108,6 +135,48 @@
       // If the API key changed we need to remove the previous item.
       if (this.editData.originalListId && this.editData.originalListId !== this.editData.listId) {
         delete(mcsConfig.lists[this.editData.originalListId]);
+      }
+
+      this.editData.isSaving = true;
+
+      return saveConfig.bind(this)();
+    };
+    $scope.interestEdit = function interestEdit(listId, interestId) {
+      $scope.editData = {
+        listId: listId,
+        interestId: interestId,
+        options: mcsConfig.accounts[mcsConfig.lists[listId].apiKey].audiences[listId].interests,
+        groupId: '',
+        apiKey: '',
+        originalInterestId: interestId || null,
+        isSaving: false
+      };
+      if (interestId && interestId in mcsConfig.lists[listId].interests) {
+        $scope.editData.groupId = mcsConfig.lists[listId].interests[interestId];
+      }
+      $scope.view = 'editInterest';
+    };
+    $scope.interestDelete = function interestDelete(listId, interestId) {
+      if (confirm("Delete interest-group subscription sync?")) {
+        delete(mcsConfig.lists[listId].interests[interestId]);
+        return crmStatus(
+          {start: ts('Deleting...'), success: ts('Deleted')},
+          crmApi('Setting', 'create', {
+            mailchimpsync_config: JSON.stringify(mcsConfig)
+          })
+        );
+      }
+    };
+    $scope.interestSave = function interestSave() {
+      // Store in config array, keyed by Mailchimp List ID.
+      if (! ('interests' in mcsConfig.lists[this.editData.listId])) {
+        mcsConfig.lists[this.editData.listId].interests = {};
+      }
+      mcsConfig.lists[this.editData.listId].interests[this.editData.interestId] = this.editData.groupId;
+
+      // If the API key changed we need to remove the previous item.
+      if (this.editData.originalInterestId && this.editData.originalInterestId !== this.editData.interestId) {
+        delete(mcsConfig.lists[this.editData.listId].interests[this.editData.originalListId]);
       }
 
       this.editData.isSaving = true;

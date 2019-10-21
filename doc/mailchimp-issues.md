@@ -41,3 +41,9 @@ This downloads a gzipped tar file. However the format of the tar file is incompa
 I believe it should start with either no directory, or a named relative one, like `response/`.
 
 This means that I had to write a custom class to handle this tar format.
+
+## Fetch since
+
+If you set a very old date for fetching members updated 'since', e.g.
+1970, the API seems to just hang, even with tiny lists that don't have
+much history.

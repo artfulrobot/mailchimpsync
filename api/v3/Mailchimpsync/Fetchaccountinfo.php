@@ -32,7 +32,7 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
     $result = $api->get('', ['fields' => 'account_name,email,first_name,last_name,username']);
 
     // Fetch audiences.
-    $audiences = $api->get('lists', ['fields' => 'lists.id,lists.name,lists.stats', 'count' => 1000]);
+    $audiences = $api->get('lists', ['fields' => 'lists.id,lists.name', 'count' => 1000]);
 
     // Store lists keyed by their IDs.
     $result['audiences'] = [];
@@ -40,6 +40,18 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
       $list_id = $list['id'];
       unset($list['id']);
       $result['audiences'][$list_id] = $list;
+      // Now fetch interests for each list.
+      $interest_cats = $api->get("lists/$list_id/interest-categories", [
+          'fields' => 'categories.id,categories.title', 'count' => 1000
+        ])['categories'] ?? [];
+      foreach ($interest_cats as $interest_cat) {
+        $interests = $api->get("lists/$list_id/interest-categories/$interest_cat[id]/interests",
+          ['fields' => 'interests.id,interests.name', 'count' => 1000])['interests'] ?? [];
+        foreach ($interests as $interest) {
+          $result['audiences'][$list_id]['interests'][$interest['id']] =
+            "$interest_cat[title]: $interest[name]";
+        }
+      }
     }
 
   }

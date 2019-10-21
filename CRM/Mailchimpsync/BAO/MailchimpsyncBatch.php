@@ -54,8 +54,8 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
       } while ($file);
 
       // Update our batch record.
-      $this->completed_at = $batch_status['completed_at'];
-      $this->submitted_at = $batch_status['submitted_at'];
+      $this->completed_at = date('YmdHis', strtotime($batch_status['completed_at']));
+      $this->submitted_at = date('YmdHis', strtotime($batch_status['submitted_at']));
       $this->finished_operations = $batch_status['finished_operations'];
       $this->status = $batch_status['status'];
       $this->errored_operations = $batch_status['errored_operations'];

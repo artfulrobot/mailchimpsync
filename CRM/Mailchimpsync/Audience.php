@@ -383,7 +383,7 @@ class CRM_Mailchimpsync_Audience
 
     $bao->sync_status = 'todo';
     $bao->mailchimp_status = $member['status'];
-    $bao->mailchimp_updated = $member['last_changed'];
+    $bao->mailchimp_updated = date('YmdHis', strtotime($member['last_changed']));
 
     // Create JSON data from Mailchimp.
     $data = [
@@ -771,8 +771,12 @@ class CRM_Mailchimpsync_Audience
     try {
       $subs = $this->parseSubs($cache_entry);
       $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
-      $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
-      // @todo other reconcilation operations.
+      if (($mailchimp_updates['status'] ?? '') !== 'unsubscribed') {
+        // This is not an unsubscribe request, so process other data, too.
+
+        $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
+        // @todo other reconcilation operations.
+      }
 
       if ($mailchimp_updates) {
         $cache_entry->sync_status = 'live';
@@ -904,9 +908,6 @@ class CRM_Mailchimpsync_Audience
    */
   public function reconcileInterestGroups(&$mailchimp_updates, CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry, $subs) {
     // each interest group...
-    // find contacts without that interest group in mailchimp, but with it in civi
-    // add in the other way around.
-    // compare these and reconcile.
 
     $mailchimp_data = unserialize($cache_entry->mailchimp_data);
     foreach ($this->config['interests'] ?? [] as $interest_id => $group_id) {
@@ -917,7 +918,7 @@ class CRM_Mailchimpsync_Audience
         if ($mailchimp_status !== $civicrm_status) {
           // There are differences.
 
-          if (($subs[$group_id]['status']['mostRecent'] ?? 'Mailchimp') === 'Mailchimp' ) {
+          if (($subs[$group_id]['mostRecent'] ?? 'Mailchimp') === 'Mailchimp' ) {
             // Mailchimp was most recently updated. This also includes the case
             // when CiviCRM has no group subscription history for this group
             // and therefore we say Mailchimp is authoritative.
@@ -931,7 +932,7 @@ class CRM_Mailchimpsync_Audience
           }
           else {
             // CiviCRM was most recently updated, we will update Mailchimp.
-            $mailchimp_updates['interests'][$interest_id] = $civicrm_status ? 1 : 0;
+            $mailchimp_updates['interests'][$interest_id] = $civicrm_status ? TRUE : FALSE;
           }
         }
       }
