@@ -523,7 +523,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Now it's all set up, run reconciliation then test expected outcomes.
     $updates = [];
-    $subs = $audience->parseSubs($bao);
+    $subs = $audience->parseSubs($bao->mailchimp_updated, $bao->civicrm_groups);
     $audience->reconcileSubscriptionGroup($updates, $bao, $subs);
 
     $this->assertEquals($data['expected_mailchimp_updates'], $updates, "$description Mailchimp updates differ");

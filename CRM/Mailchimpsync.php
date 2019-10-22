@@ -108,18 +108,11 @@ class CRM_Mailchimpsync
     return $batches;
   }
   /**
-   * Update the 'civicrm_groups' field in our cache table.
+   * Get an array of Integer Group ID used for any 2 way sync.
    *
-   * @param mixed $relevant_since
+   * @return Array
    */
-  public function updateGroupsInCacheTable($relevant_since, $reset=0) {
-    if (static::$updateGroupsInCacheTableHasRun && !$reset) {
-      // Only do this once per session.
-      return;
-    }
-    static::$updateGroupsInCacheTableHasRun = TRUE;
-
-    // Get array of groups we care about
+  public static function getAllGroupIds() {
     $group_ids = [];
     $config = static::getConfig();
     foreach ($config['lists'] as $list) {
@@ -128,21 +121,28 @@ class CRM_Mailchimpsync
         $group_ids[] = (int) $group_id;
       }
     }
+    return $group_ids;
+  }
+  /**
+   * Update the 'civicrm_groups' field in our cache table.
+   *
+   * @param bool $reset
+   */
+  public static function updateGroupsInCacheTable($reset=FALSE) {
+    if (static::$updateGroupsInCacheTableHasRun && !$reset) {
+      // Only do this once per session.
+      return;
+    }
+    static::$updateGroupsInCacheTableHasRun = TRUE;
+
+    // Get array of groups we care about
+    $group_ids = static::getAllGroupIds();
     if ($group_ids) {
       $group_ids_clause = "group_id IN (" . implode(',', $group_ids) . ')';
     }
     else {
       // In the case that there's no groups (e.g. just set up), just create an empty table.
       $group_ids_clause = '0';
-    }
-
-    if ($relevant_since) {
-      $and_since = "AND h1.date >= %1";
-      $params = [1 => [date('YmdHis', $relevant_since), 'Date']];
-    }
-    else {
-      $and_since = '';
-      $params = [];
     }
 
     // Increase the max length for group concat.
@@ -158,7 +158,6 @@ class CRM_Mailchimpsync
           WHERE
             $group_ids_clause
             AND contact_id IS NOT NULL
-            $and_since
             AND NOT EXISTS (
               SELECT id FROM civicrm_subscription_history h2
               WHERE h2.group_id = h1.group_id
@@ -168,6 +167,6 @@ class CRM_Mailchimpsync
         ) AS subs_results ON c.civicrm_contact_id = subs_results.contact_id
         SET c.civicrm_groups = subs_results.subs
       ";
-    CRM_Core_DAO::executeQuery($sql, $params);
+    CRM_Core_DAO::executeQuery($sql);
   }
 }

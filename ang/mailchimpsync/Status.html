@@ -51,7 +51,11 @@
       </div>
       <p>
         {{fetchLock = mcsStatus[selectedListId].locks.fetchAndReconcile || 'readyToFetch';""}}
-        <span class="mcs-status-pill meh" ng-if="fetchLock != 'readyToFetch'">Running</span>
+        <span ng-if="fetchLock != 'readyToFetch'">
+          <span class="mcs-status-pill meh" ng-if="fetchLock != 'readyToFetch'">Running</span>
+          <span ng-if="listStats.todo > 0">{{ listStats.todo }} remaining to process.</span>
+          <span>{{ mcsStatus[selectedListId].log[mcsStatus[selectedListId].log.length-1].message }}</span>
+        </span>
         <span ng-if="fetchLock == 'readyToFetch'">
           <span class="mcs-status-pill good" ng-if="fetchLock == 'readyToFetch'">Waiting</span>
           Will periodically fetch and reconcile
@@ -121,6 +125,8 @@
                     <option >ok</option>
                     <option >live</option>
                     <option >fail</option>
+                    <option value="todo">todo</option>
+                    <option >redo</option>
             </select>
           </div>
 
