@@ -60,4 +60,16 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
       $contacts, $audience->getSubscriptionGroup(), 'MCsync', 'Removed');
     return $this;
   }
+  /**
+   * Return a new object for the same record by reloading from database.
+   *
+   * @return CRM_Mailchimpsync_BAO_MailchimpsyncCache
+   */
+  public function reloadNewObjectFromDb() {
+    $id = $this->id;
+    $obj = new static();
+    $obj->id = $id;
+    $obj->find(TRUE);
+    return $obj;
+  }
 }

@@ -589,32 +589,11 @@ class CRM_Mailchimpsync_Audience
     $stop_time = time() + ($remaining_time ?? 60*60*24*7);
 
     while ($dao->fetch()) {
-      $id = (int) $dao->id;
 
-      if ($dao->mailchimp_status !== 'subscribed') {
-        // Only import contacts that are subscribed.
-        CRM_Core_DAO::executeQuery("DELETE FROM civicrm_mailchimpsync_cache WHERE id = $id");
-        continue;
-      }
-      $total++;
-
-      // Create contact.
-      $params = [
-        'contact_type' => 'Individual',
-        'email'        => $dao->mailchimp_email,
-      ];
-
-      // If we have their name, use it to create contact.
-      $mailchimp_data = unserialize($dao->mailchimp_data);
-      foreach (['first_name', 'last_name'] as $field) {
-        if (!empty($mailchimp_data[$field])) {
-          $params[$field] = $mailchimp_data[$field];
-        }
+      if ($this->createNewContact($dao)) {
+        $total++;
       }
 
-      $contact_id = (int) civicrm_api3('Contact', 'create', $params)['id'];
-
-      CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = $contact_id WHERE id = $id");
       if (time() >= $stop_time) {
         // Time's up, but we're not finished.
         $this->updateLock([
@@ -632,6 +611,41 @@ class CRM_Mailchimpsync_Audience
       'andLog' => "createNewContactsFromMailchimp: Added $total new contacts found in Mailchimp but not CiviCRM. No more to do.",
     ]);
     return $total;
+  }
+  /**
+   * Create new contact from the data given.
+   *
+   * @param CRM_Core_DAO $dao - this could be a
+   * CRM_Mailchimpsync_BAO_MailchimpsyncCache or a custom SQL DAO.
+   *
+   * @return FALSE|Integer Contact ID created.
+   */
+  public function createNewContact($dao) {
+    $id = (int) $dao->id;
+
+    if (!in_array($dao->mailchimp_status, ['pending', 'subscribed'])) {
+      // Only import contacts that are subscribed.
+      CRM_Core_DAO::executeQuery("DELETE FROM civicrm_mailchimpsync_cache WHERE id = $id");
+      return FALSE;
+    }
+    // Create contact.
+    $params = [
+      'contact_type' => 'Individual',
+      'email'        => $dao->mailchimp_email,
+    ];
+
+    // If we have their name, use it to create contact.
+    $mailchimp_data = unserialize($dao->mailchimp_data);
+    foreach (['first_name', 'last_name'] as $field) {
+      if (!empty($mailchimp_data[$field])) {
+        $params[$field] = $mailchimp_data[$field];
+      }
+    }
+
+    $contact_id = (int) civicrm_api3('Contact', 'create', $params)['id'];
+    CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = $contact_id WHERE id = $id");
+
+    return $contact_id;
   }
   /**
    *
@@ -1070,6 +1084,52 @@ class CRM_Mailchimpsync_Audience
     return count($requests);
   }
 
+  /**
+   * Sync a single contact. Used by webhook.
+   *
+   * @param String $email
+   *
+   * @return NULL|CRM_Mailchimpsync_BAO_MailchimpsyncCache
+   */
+  public function syncSingle($email) {
+
+    // Fetch member from Mailchimp and merge it into our cache record.
+    $api = $this->getMailchimpApi();
+    $member_id = $api->getMailchimpMemberIdFromEmail($email);
+    $member = $api->get("lists/$this->mailchimp_list_id/members/$member_id");
+    $cache_entry = $this->mergeMailchimpMember($member);
+
+    // Check any existing contact_id
+    if ($cache_entry->civicrm_contact_id) {
+      if (civicrm_api3('Contact', 'getcount', ['id' => $cache_entry->civicrm_contact_id]) == 0) {
+        $cache_entry->civicrm_contact_id = 'null';
+        $cache_entry->save();
+      }
+    }
+
+    // Check if we're missing a contact ID.
+    if (!$cache_entry->civicrm_contact_id) {
+      $this->populateMissingContactIds();
+      $cache_entry = $cache_entry->reloadNewObjectFromDb();
+    }
+
+    // Check if we're still missing a contact id.
+    if (!$cache_entry->civicrm_contact_id) {
+      $contact_id = $this->createNewContact($cache_entry);
+      if (!$contact_id) {
+        // we deleted this item instead, since they weren't subscribed anyway.
+        return;
+      }
+    }
+
+    CRM_Mailchimpsync::updateGroupsInCacheTable(FALSE, $cache_entry->id);
+    $cache_entry = $cache_entry->reloadNewObjectFromDb();
+
+    // Finally.
+    $this->reconcileQueueItem($cache_entry);
+
+    return $cache_entry;
+  }
   // utility methods
   /**
    * Unpack the GROUP_CONCAT generated field.

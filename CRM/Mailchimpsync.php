@@ -191,13 +191,20 @@ class CRM_Mailchimpsync
    * Update the 'civicrm_groups' field in our cache table.
    *
    * @param bool $reset
+   * @param int $single_cache_entry_id If given, only update a single cache entry record.
    */
-  public static function updateGroupsInCacheTable($reset=FALSE) {
-    if (static::$updateGroupsInCacheTableHasRun && !$reset) {
-      // Only do this once per session.
-      return;
+  public static function updateGroupsInCacheTable($reset=FALSE, $single_cache_entry_id=NULL) {
+    if (!$single_cache_entry_id) {
+      if (static::$updateGroupsInCacheTableHasRun && !$reset) {
+        // Only do this once per session.
+        return;
+      }
+      static::$updateGroupsInCacheTableHasRun = TRUE;
+      $where = '';
     }
-    static::$updateGroupsInCacheTableHasRun = TRUE;
+    else {
+      $where = "WHERE c.id=$single_cache_entry_id";
+    }
 
     // Get array of groups we care about
     $group_ids = static::getAllGroupIds();
@@ -230,6 +237,7 @@ class CRM_Mailchimpsync
           GROUP BY contact_id
         ) AS subs_results ON c.civicrm_contact_id = subs_results.contact_id
         SET c.civicrm_groups = subs_results.subs
+        $where
       ";
     CRM_Core_DAO::executeQuery($sql);
   }
