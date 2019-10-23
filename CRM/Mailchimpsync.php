@@ -43,7 +43,71 @@ class CRM_Mailchimpsync
    * @param array $config
    */
   public static function setConfig($config) {
+
+    // Ensure we only have lists mentioned in our accounts section.
+    $list_to_account = [];
+    foreach ($config['accounts'] as $account) {
+      foreach (array_keys($account['audiences']) as $list_id) {
+        $list_to_account[$list_id] = $account;
+      }
+    }
+
+    foreach ($config['lists'] as $list_id => $list_config) {
+      if (!isset($list_to_account[$list_id])) {
+        // Need to remove list.
+        unset($config['lists'][$list_id]);
+      }
+      else {
+        // List is valid, check interests.
+        foreach (array_keys($list_config['interests'] ?? []) as $interest_id) {
+          if (!isset($list_to_account[$list_id]['interests'][$interest_id])) {
+            // Invalid interest.
+            unset($config['lists'][$list_id]['interests'][$interest_id]);
+          }
+        }
+      }
+    }
+
     Civi::settings()->set('mailchimpsync_config', json_encode($config));
+
+    // Now check we only have metadata relating to our configured lists.
+
+    if (!$config['lists']) {
+      // We have no lists! Remove everything!
+      CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_batch');
+      CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_cache');
+      CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_status');
+      CRM_Core_DAO::executeQuery('DELETE FROM civicrm_mailchimpsync_update');
+    }
+    else {
+
+      $lists_placeholders = [];
+      $params = [];
+      $i = 1;
+      foreach (array_keys($config['lists']) as $list_id ) {
+        $lists_placeholders[] = "%$i";
+        $params[$i] = [$list_id, 'String'];
+        $i++;
+      }
+      $lists_placeholders = implode(', ', $lists_placeholders);
+
+      // Delete any cache entries belonging to lists we don't have.
+      // This should delete updates via FK
+      $sql = "DELETE FROM civicrm_mailchimpsync_cache
+        WHERE mailchimp_list_id NOT IN ($lists_placeholders)";
+      CRM_Core_DAO::executeQuery($sql, $params);
+
+      // Delete any batches belonging to lists we don't have.
+      $sql = "DELETE FROM civicrm_mailchimpsync_batch
+        WHERE mailchimp_list_id NOT IN ($lists_placeholders)";
+      CRM_Core_DAO::executeQuery($sql, $params);
+
+      // Delete any cache entries belonging to lists we don't have.
+      $sql = "DELETE FROM civicrm_mailchimpsync_status
+        WHERE list_id NOT IN ($lists_placeholders)";
+      CRM_Core_DAO::executeQuery($sql, $params);
+
+    }
   }
   /**
    * Submit batches for all lists.
@@ -168,5 +232,38 @@ class CRM_Mailchimpsync
         SET c.civicrm_groups = subs_results.subs
       ";
     CRM_Core_DAO::executeQuery($sql);
+  }
+  /**
+   * Get the batch webhook url for this account.
+   *
+   * @param string $api_key
+   * @param string|NULL $secret
+   *
+   * @return string
+   */
+  public static function getBatchWebhookUrl($api_key, $secret=NULL) {
+    if (!$secret) {
+      $secret = static::getBatchWebhookSecret($api_key);
+    }
+    return CRM_Utils_System::url('civicrm/mailchimpsync/batch-webhook', ['secret' => $secret], TRUE);
+  }
+  /**
+   * Get the batch webhook secret for this account.
+   *
+   * @param string $api_key
+   * @return string
+   */
+  public static function getBatchWebhookSecret($api_key) {
+
+    $config = static::getConfig();
+    if (!empty($config['accounts'][$api_key]['batchWebhookSecret'])) {
+      // Return existing secret if poss.
+      return $config['accounts'][$api_key]['batchWebhookSecret'];
+    }
+    else {
+      // Generate a new secret.
+      $secret = sha1($api_key . microtime(TRUE));
+      return $secret;
+    }
   }
 }

@@ -68,6 +68,8 @@
             <td><a href ng-click="accountEdit(apiKey)">{{ts('Edit')}}</a>
               |
               <a href ng-click="accountDelete(apiKey)">{{ts('Delete')}}</a>
+              <span ng-if="!details.batchWebhookFound"
+                class="mcs-status-pill bad">Batch webhook missing</span>
             </td>
           </tr>
         </tbody>
@@ -94,7 +96,38 @@
 
       <button ng-click="accountSave()" >{{ts('Save Account')}}</button>
       <br />
+      <br />
       <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
+      <br />
+      <br />
+
+      <div ng-if="mcsConfig.accounts[editData.apiKey].batchWebhook" >
+        <!-- account is saved -->
+
+        <div ng-if="mcsConfig.accounts[editData.apiKey].batchWebhookFound" >
+          <span class="mcs-status-pill good">Batch webhook</span> correctly registered.
+          <br />
+          <code class="mcs-webhook-url">{{mcsConfig.accounts[editData.apiKey].batchWebhook}}</code>
+        </div>
+        <div ng-if="!mcsConfig.accounts[editData.apiKey].batchWebhookFound" >
+          <span class="mcs-status-pill meh">Batch webhook</span> not registered, sync cannot complete automatically.<br />
+          <p>The correct URL for this site is<br />
+          <code class="mcs-webhook-url">{{mcsConfig.accounts[editData.apiKey].batchWebhook}}</code>
+          <br /><a href ng-click="bwhAdd()">Add webhook</a> (Don't add if on a development site!)</p>
+
+          <div ng-if="mcsConfig.accounts[editData.apiKey].batchWebhooks.length > 0" >
+            The following other batch webhooks were found:
+            <ul>
+              <li ng-repeat="hook in mcsConfig.accounts[editData.apiKey].batchWebhooks">
+                <code class="mcs-webhook-url">{{hook.url}}</code><br />
+                <a href ng-click="bwhDelete(editData.apiKey, hook.id)">Delete</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+
 
     </div>
 

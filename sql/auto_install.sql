@@ -135,7 +135,7 @@ CREATE TABLE `civicrm_mailchimpsync_cache` (
 -- *
 -- * civicrm_mailchimpsync_update
 -- *
--- * FIXME
+-- * This table keeps a copy of all updates sent or to be sent to Mailchimp.
 -- *
 -- *******************************************************/
 CREATE TABLE `civicrm_mailchimpsync_update` (
@@ -151,7 +151,7 @@ CREATE TABLE `civicrm_mailchimpsync_update` (
         PRIMARY KEY (`id`)
  
  
-,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_cache_id FOREIGN KEY (`mailchimpsync_cache_id`) REFERENCES `civicrm_mailchimpsync_cache`(`id`) ON DELETE SET NULL,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_batch_id FOREIGN KEY (`mailchimpsync_batch_id`) REFERENCES `civicrm_mailchimpsync_batch`(`id`) ON DELETE SET NULL  
+,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_cache_id FOREIGN KEY (`mailchimpsync_cache_id`) REFERENCES `civicrm_mailchimpsync_cache`(`id`) ON DELETE CASCADE,          CONSTRAINT FK_civicrm_mailchimpsync_update_mailchimpsync_batch_id FOREIGN KEY (`mailchimpsync_batch_id`) REFERENCES `civicrm_mailchimpsync_batch`(`id`) ON DELETE CASCADE  
 )    ;
 
  

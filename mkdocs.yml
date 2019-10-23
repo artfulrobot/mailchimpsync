@@ -1,0 +1,21 @@
+site_name: Mailchimp Sync
+repo_url: https://github.com/artfulrobot/mailchimpsync
+theme: material
+
+pages:
+- Home: index.md
+- Quick Start: quick-start.md
+- Sync Details: sync-detail.md
+
+markdown_extensions:
+  - attr_list
+  - admonition
+  - def_list
+  - codehilite
+  - toc(permalink=true)
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tilde
+  - pymdownx.betterem
+  - pymdownx.mark
+

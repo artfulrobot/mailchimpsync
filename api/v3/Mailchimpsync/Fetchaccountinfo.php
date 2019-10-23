@@ -54,6 +54,12 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
       }
     }
 
+    // Fetch webhooks.
+    $webhook_secret = CRM_Mailchimpsync::getBatchWebhookSecret($params['api_key']);
+    $result['batchWebhookSecret'] = $webhook_secret;
+    $result['batchWebhook'] = CRM_Mailchimpsync::getBatchWebhookUrl($params['api_key'], $webhook_secret);
+    $result['batchWebhooks'] = $api->get('batch-webhooks')['webhooks'] ?? [];
+    $result['batchWebhookFound'] = in_array($result['batchWebhook'], array_column($result['batchWebhooks'], 'url'));
   }
   catch (CRM_Mailchimpsync_RequestErrorException $e) {
     throw new API_Exception('Failed to access Mailchimp API (4xx error) with given key. Error: ' . $e->getMessage());

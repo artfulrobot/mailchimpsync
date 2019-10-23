@@ -112,13 +112,7 @@
     $scope.listDelete = function listDelete(listId) {
       if (confirm("Delete audience-group subscription sync? " + listId)) {
         delete(mcsConfig.lists[listId]);
-        return crmStatus(
-          {start: ts('Deleting...'), success: ts('Deleted')},
-          // The save action. Note that crmApi() returns a promise.
-          crmApi('Setting', 'create', {
-            mailchimpsync_config: JSON.stringify(mcsConfig)
-          })
-        );
+        return saveConfig('Deleting...', 'Deleted');
       }
     };
     $scope.listSave = function listSave() {
@@ -159,12 +153,7 @@
     $scope.interestDelete = function interestDelete(listId, interestId) {
       if (confirm("Delete interest-group subscription sync?")) {
         delete(mcsConfig.lists[listId].interests[interestId]);
-        return crmStatus(
-          {start: ts('Deleting...'), success: ts('Deleted')},
-          crmApi('Setting', 'create', {
-            mailchimpsync_config: JSON.stringify(mcsConfig)
-          })
-        );
+        return saveConfig('Deleting...', 'Deleted');
       }
     };
     $scope.interestSave = function interestSave() {
@@ -183,18 +172,22 @@
 
       return saveConfig.bind(this)();
     };
-    function saveConfig() {
+    function saveConfig(msgDoing, msgDone, noReturnToOverview) {
+      console.log("saveConfig noRet:", noReturnToOverview);
       return crmStatus(
         // Status messages. For defaults, just use "{}"
-        {start: ts('Saving...'), success: ts('Saved')},
+        {start: ts(msgDoing || 'Saving...'), success: ts(msgDone || 'Saved')},
         // The save action. Note that crmApi() returns a promise.
-        crmApi('Setting', 'create', {
-          mailchimpsync_config: JSON.stringify(mcsConfig)
-        })
+        crmApi('Mailchimpsync', 'updateconfig',
+          { config: JSON.stringify(mcsConfig) })
         .then(r => {
           console.log("Saved value", r);
           this.editData.isSaving = false;
-          this.view = 'overview';
+          mcsConfig = r.values.config;
+          $scope.mcsConfig = mcsConfig;
+          if (!noReturnToOverview) {
+            this.view = 'overview';
+          }
         })
       );
     }
@@ -222,13 +215,7 @@
           }
         }
 
-        return crmStatus(
-          {start: ts('Deleting...'), success: ts('Deleted')},
-          // The save action. Note that crmApi() returns a promise.
-          crmApi('Setting', 'create', {
-            mailchimpsync_config: JSON.stringify(mcsConfig)
-          })
-        );
+        return saveConfig('Deleting...', 'Deleted');
       }
     };
     $scope.accountSave = function accountSave() {
@@ -257,12 +244,45 @@
             delete(mcsConfig.accounts[this.editData.originalAccountId]);
           }
 
+          // Store details on main config.
           mcsConfig.accounts[this.editData.apiKey] = Object.assign(
             {apiKey: this.editData.apiKey},
             r.values);
 
+          return saveConfig.bind(this)('Saving...', 'Saved', !r.values.batchWebhookFound);
         })
-      ).then(saveConfig.bind(this));
+      );
+    };
+    $scope.bwhAdd = function bwhAdd() {
+      return crmStatus(
+        // Status messages. For defaults, just use "{}"
+        {start: ts('Contacting Mailchimp...'), success: ts('OK')},
+        // The save action. Note that crmApi() returns a promise.
+        crmApi('Mailchimpsync', 'updatebatchwebhook', {
+          api_key: this.editData.apiKey,
+          process: 'add'
+        })
+        .then(r => {
+          mcsConfig = r.values.config;
+          $scope.mcsConfig = mcsConfig;
+        })
+      );
+    };
+    $scope.bwhDelete = function bwhAdd(apiKey, bwhId) {
+      return crmStatus(
+        // Status messages. For defaults, just use "{}"
+        {start: ts('Contacting Mailchimp...'), success: ts('OK')},
+        // The save action. Note that crmApi() returns a promise.
+        crmApi('Mailchimpsync', 'updatebatchwebhook', {
+          api_key: apiKey,
+          id: bwhId,
+          process: 'delete'
+        })
+        .then(r => {
+          mcsConfig = r.values.config;
+          $scope.mcsConfig = mcsConfig;
+        })
+      );
     };
 
   });

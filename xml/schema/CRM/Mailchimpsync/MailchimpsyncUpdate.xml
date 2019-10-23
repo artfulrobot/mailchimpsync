@@ -4,7 +4,7 @@
   <base>CRM/Mailchimpsync</base>
   <class>MailchimpsyncUpdate</class>
   <name>civicrm_mailchimpsync_update</name>
-  <comment>FIXME</comment>
+  <comment>This table keeps a copy of all updates sent or to be sent to Mailchimp.</comment>
   <log>false</log>
 
   <field>
@@ -27,7 +27,7 @@
     <name>mailchimpsync_cache_id</name>
     <table>civicrm_mailchimpsync_cache</table>
     <key>id</key>
-    <onDelete>SET NULL</onDelete>
+    <onDelete>CASCADE</onDelete>
   </foreignKey>
 
   <field>
@@ -39,7 +39,7 @@
     <name>mailchimpsync_batch_id</name>
     <table>civicrm_mailchimpsync_batch</table>
     <key>id</key>
-    <onDelete>SET NULL</onDelete>
+    <onDelete>CASCADE</onDelete>
   </foreignKey>
 
   <field>

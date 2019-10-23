@@ -11,6 +11,7 @@ use Civi\Test\TransactionalInterface;
  */
 class api_v3_Mailchimpsync_GetstatusTest extends \PHPUnit\Framework\TestCase implements HeadlessInterface, HookInterface, TransactionalInterface {
   use \Civi\Test\Api3TestTrait;
+  use CRM_Mailchimpsync_FixturesTrait;
 
   /**
    * Set up for headless tests.
@@ -46,8 +47,47 @@ class api_v3_Mailchimpsync_GetstatusTest extends \PHPUnit\Framework\TestCase imp
    * Note how the function name begins with the word "test".
    */
   public function testApiExample() {
-    $result = civicrm_api3('Mailchimpsync', 'Getstatus', array('magicword' => 'sesame'));
-    $this->assertEquals('Twelve', $result['values'][12]['name']);
+    // Create Fixture
+    $various = $this->batchWebhookSetup();
+    $audience = $various->audience;
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpBatchStatus('123456789a', [
+      'id' => '123456789a',
+      'status' => 'pending',
+      'response_body_url' => 'https://example.com/batch-1-results',
+      'completed_at' => date('Y-m-d H:i:s'),
+      'submitted_at' => date('Y-m-d H:i:s'),
+      'finished_operations' => 0,
+      'errored_operations' => 0,
+      'total_operations' => 1,
+    ]);
+
+
+    // Run tests.
+    $result = civicrm_api3('Mailchimpsync', 'Getstatus', []);
+    $this->assertEquals(1, $result['count']);
+    $this->assertArrayHasKey('list_1', $result['values']);
+    $this->assertEquals('readyToFetch', $result['values']['list_1']['locks']['fetchAndReconcile']);
+    $this->assertEquals(FALSE, $result['values']['list_1']['in_sync']);
+    foreach ([
+        'failed' => 0,
+        'subscribed_at_mailchimp' => 0,
+        'subscribed_at_civicrm' => 1,
+        'to_add_to_mailchimp' => 1,
+        'cannot_subscribe' => 0,
+        'to_remove_from_mailchimp' => 0,
+        'todo' => 0,
+        'mailchimp_updates_pending' => 1,
+        'mailchimp_updates_unsubmitted' => 0,
+      ] as $k=>$v) {
+        $this->assertEquals($v , $result['values']['list_1']['stats'][$k]);
+    }
+
+    $this->assertThat($result['values']['list_1'], $this->logicalNot($this->arrayHasKey('batches')));
+
+    $result = civicrm_api3('Mailchimpsync', 'Getstatus', ['batches' => 1]);
+    $this->assertArrayHasKey('batches', $result['values']['list_1']);
+
   }
 
 }

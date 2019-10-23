@@ -61,3 +61,7 @@ form[name="mcs-cache-filters"] {
 .mcs-cache-filter button,
 .mcs-cache-filter select { width: 100%; }
 div.crm-container .mcs-cache-filter label { display:block; }
+code.mcs-webhook-url {
+  font-size: 0.75rem;
+  color: #444;
+}

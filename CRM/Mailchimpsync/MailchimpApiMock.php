@@ -140,6 +140,18 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       elseif (preg_match(';lists/([^/]+)/members$;', $path, $matches)) {
         return $this->mockGetListMembers($matches[1], $query);
       }
+      elseif (preg_match(';lists/([^/]+)/interest-categories$;', $path, $matches)) {
+        return $this->mockGetListInterestCategories($matches[1], $query);
+      }
+      elseif (preg_match(';lists/([^/]+)/interest-categories/([^/]+)/interests$;', $path, $matches)) {
+        return $this->mockGetListInterests($matches[1], $matches[2], $query);
+      }
+      elseif ($path === 'batch-webhooks') {
+        return $this->mockGetBatchWebhooks();
+      }
+      elseif ($path === 'batches') {
+        return $this->mockGetBatches();
+      }
       elseif (preg_match(';batches/([a-z0-9]{10})$;', $path, $matches)) {
         return $this->mockGetBatchStatus($matches[1]);
       }
@@ -147,6 +159,11 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
     elseif ($method === 'POST') {
       if ($path === 'batches') {
         return $this->mockPostBatches($body);
+      }
+    }
+    elseif ($method === 'DELETE') {
+      if (preg_match(';batches/([a-z0-9]{10})$;', $path, $matches)) {
+        return $this->mockDeleteBatches($matches[1]);
       }
     }
     throw new Exception("Code not written to mock the request: ". json_encode(
@@ -202,6 +219,16 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
   }
   /**
    */
+  public function mockGetBatchWebhooks() {
+    return ['webhooks' => []];
+  }
+  /**
+   */
+  public function mockGetBatches() {
+    return ['batches' => $this->mock_mailchimp_batch_status];
+  }
+  /**
+   */
   public function mockPostBatches($data) {
     $id = "batch_" . count($this->batches);
     $this->batches[$id] = $data;
@@ -209,6 +236,15 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       'id' => $id,
       // ...
     ];
+  }
+  /**
+   */
+  public function mockDeleteBatches( $mailchimp_batch_id) {
+    if (isset($this->mock_mailchimp_batch_status[$mailchimp_batch_id])) {
+      unset($this->mock_mailchimp_batch_status[$mailchimp_batch_id]);
+      return;
+    }
+    throw new \InvalidArgumentException("Unknown batch $mailchimp_batch_id");
   }
   /**
    * Download the resource URL to an uncompressed tar file.
@@ -224,5 +260,24 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       return $filename;
     }
     throw new InvalidArgumentException("Mock has no data for $url");
+  }
+  public function mockGetListInterestCategories($list_id) {
+    if (!$list_id === 'list_1') {
+      throw new InvalidArgumentException("mock not programmed for list '$list_id'");
+    }
+    return [
+      'categories' => ['cat1cat1' => ['title' => 'Category 1', 'id' => 'cat1cat1']],
+    ];
+  }
+  public function mockGetListInterests($list_id, $category) {
+    if (!$list_id === 'list_1') {
+      throw new InvalidArgumentException("mock not programmed for list '$list_id'");
+    }
+    if (!$category === 'cat1cat1') {
+      throw new InvalidArgumentException("mock not programmed for category '$category'");
+    }
+    return [
+      'interests' => ['int1int1' => ['name' => 'Interest 1', 'id' => 'int1int1']],
+    ];
   }
 }

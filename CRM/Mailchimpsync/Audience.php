@@ -219,7 +219,7 @@ class CRM_Mailchimpsync_Audience
    * Abort a sync.
    */
   public function abortSync() {
-    // First, find any batches to do with this sync and try to cancel them.
+    // First, find any batches to do with this sync and try to cancel them at Mailchimp.
     $batches = CRM_Core_DAO::executeQuery(
       'SELECT mailchimp_batch_id b
        FROM civicrm_mailchimpsync_batch
@@ -1008,7 +1008,7 @@ class CRM_Mailchimpsync_Audience
           ON up.mailchimpsync_cache_id = cache.id
              AND cache.sync_status = 'live'
              AND cache.mailchimp_list_id = %1
-      WHERE up.mailchimpsync_batch_id IS NULL
+      WHERE up.mailchimpsync_batch_id IS NULL AND up.completed = 0
       LIMIT 1000";
     $params = [1 => [$this->mailchimp_list_id, 'String']];
     $dao = CRM_Core_DAO::executeQuery($sql, $params);
