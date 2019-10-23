@@ -266,4 +266,23 @@ class CRM_Mailchimpsync
       return $secret;
     }
   }
+  /**
+   * See if the given secret matches any of our accounts.
+   */
+  public static function batchWebhookKeyIsValid($secret) {
+    $config = static::getConfig();
+    foreach ($config['accounts'] as $_) {
+      if ($_['batchWebhookSecret'] === $secret) {
+        return TRUE;
+      }
+    }
+    return FALSE;
+  }
+  /**
+   * See if the given secret matches any of our accounts.
+   */
+  public static function webhookKeyIsValid($secret) {
+    // Don't see it would add any security to use a 2nd key here.
+    return static::batchWebhookKeyIsValid($secret);
+  }
 }

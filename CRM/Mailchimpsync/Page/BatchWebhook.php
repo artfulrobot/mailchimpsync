@@ -5,7 +5,13 @@ class CRM_Mailchimpsync_Page_BatchWebhook extends CRM_Core_Page {
 
   public function run() {
     if ($_POST) {
-      $exit_status = $this->processWebhook($_POST);
+      if (CRM_Mailchimpsync::batchWebhookKeyIsValid($_GET['secret'])) {
+        $exit_status = $this->processWebhook($_POST);
+      }
+      else {
+        // Forbidden.
+        $exit_status = 401;
+      }
       CRM_Utils_System::civiExit($exit_status);
     }
     else {
