@@ -124,15 +124,17 @@ class CRM_Mailchimpsync_Audience
    * and pick up where it left off.
    *
    * @param array $params with optional keys:
-   * - time_limit: stop after this number of seconds. Default is 1 week (assumed to basically mean no time limit).
-   * - since: a fixed since date that strtotime understands. Or pass an empty string meaning no limit, fetch all.
-   *          if not present in parame, defaults to date last sync date.
-   * - stop_on: name the ready state you want to stop processing on, e.g. readyToSubmitUpdates
+   * - time_limit:  stop after this number of seconds. Default is 1 week (assumed to basically mean no time limit).
+   * - since:       a fixed since date that strtotime understands. Or pass an empty string meaning no limit, fetch all.
+   *                if not present in parame, defaults to date last sync date.
+   * - stop_on:     name the ready state you want to stop processing on, e.g. readyToSubmitUpdates
+   * - with_data:   If set, do a data sync.
    */
   public function fetchAndReconcile($params) {
 
     $params += ['time_limit' => 604800];
     $stop_time = time() + $params['time_limit'];
+    $with_data = (!empty($params['with_data']));
 
     // Calculate 'since' option.
     $relevant_since = $this->getRelevantSinceDate($params);
@@ -188,11 +190,17 @@ class CRM_Mailchimpsync_Audience
         break;
 
       case 'readyToCheckForGroupChanges':
-        $this->identifyGroupContactChanges($relevant_since);
+        // Insert data step after this.
+        $next = $with_data ? 'readyToCheckForDataUpdates' : 'readyToReconcileQueue';
+        $this->identifyGroupContactChanges($relevant_since, $next);
+        break;
+
+      case 'readyToCheckForDataUpdates':
+        $this->checkForDataUpdates($remaining_time, $relevant_since);
         break;
 
       case 'readyToReconcileQueue':
-        $stats = $this->reconcileQueueProcess($remaining_time, $relevant_since);
+        $stats = $this->reconcileQueueProcess($remaining_time, $relevant_since, $with_data);
         break;
 
       case 'readyToSubmitUpdates':
@@ -688,7 +696,7 @@ class CRM_Mailchimpsync_Audience
   /**
    * We need to mark 'todo' any rows where any group related to this list is changed.
    */
-  public function identifyGroupContactChanges($since) {
+  public function identifyGroupContactChanges($since, $next) {
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
       'to'     => 'busy',
@@ -727,9 +735,70 @@ class CRM_Mailchimpsync_Audience
 
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
-      'to'     => 'readyToReconcileQueue',
+      'to'     => $next,
       'andLog' => "identifyGroupContactChanges: complete.",
     ]);
+  }
+  /**
+   * A data sync allows other extensions to provide data for Mailchimp.
+   *
+   * Extensions implementing hook_mailchimpsync_data_updates_check 
+   * should do what they need to ascertain what the data should be, and if it has
+   * changed. Data should be stored in the civicrm_data field.
+   * If it needs changing the sync_status should be set to 'todo'
+   *
+   * The civicrm_data field format should be like this:
+   * [
+   *   'your_identifier' => [
+   *     'member_data' => [],
+   *     'other_for_your_use' => ...
+   *   ]
+   * ]
+   *
+   * All extensions' 'member_data' will be merged into the main
+   * member update call.
+   *
+   * Both are optional.
+   *
+   * Extensions can use other fields to store things like hashes of the last data
+   * so they can tell if an update is needed, or processing offsets so that they
+   * can exit after the stop time and continue on the next round.
+   *
+   *
+   * @param int $remaining_time
+   * @param int $relevant_since
+   */
+  public function checkForDataUpdates($remaining_time, $relevant_since) {
+
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'to'     => 'busy',
+      'andLog' => "checkForDataUpdates: calling hooks",
+    ]);
+
+    $complete = FALSE;
+    $stop_time = time() + ($remaining_time ?? 60*60*24*7);
+
+    CRM_Utils_Hook::singleton()->invoke(
+      ['audience', 'complete', 'stop_time'],
+      $this, $complete, $stop_time, NULL,
+      CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject,
+      'mailchimpsync_data_updates_check');
+
+    if ($complete) {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'to'     => 'readyToReconcileQueue',
+        'andLog' => "checkForDataUpdates: completed.",
+      ]);
+    }
+    else {
+      $this->updateLock([
+        'for'    => 'fetchAndReconcile',
+        'to'     => 'readyToCheckForDataUpdates',
+        'andLog' => "checkForDataUpdates: incomplete.",
+      ]);
+    }
   }
   // The following methods deal with the 'reconciliation' phase
   /**
@@ -737,8 +806,10 @@ class CRM_Mailchimpsync_Audience
    *
    * @param int $max_time If >0 then stop if we've been running longer than
    * this many seconds. This is useful for http driven cron, for exmaple.
+   * @param int $relevant_since
+   * @param bool $with_data
    */
-  public function reconcileQueueProcess(int $max_time=0, $relevant_since) {
+  public function reconcileQueueProcess(int $max_time=0, $relevant_since, $with_data) {
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
       'to'     => 'busy',
@@ -765,7 +836,7 @@ class CRM_Mailchimpsync_Audience
       $dao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
       $dao->id = $cache_id;
       $dao->find(TRUE);
-      $this->reconcileQueueItem($dao);
+      $this->reconcileQueueItem($dao, $with_data);
       $done++;
     }
 
@@ -794,10 +865,12 @@ class CRM_Mailchimpsync_Audience
    * This will result in the item having status 'ok', or 'live' if mailchimp updates are queued.
    *
    * @param CRM_Mailchimpsync_DAO_MailchimpsyncCache $dao
+   * @param bool $with_data
    */
-  public function reconcileQueueItem(CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry) {
+  public function reconcileQueueItem(CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry, $with_data=FALSE) {
 
     $mailchimp_updates = [];
+    $tags = [];
     try {
       $subs = $this->parseSubs($cache_entry->mailchimp_updated, $cache_entry->civicrm_groups);
       $final_state_is_subscribed = $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
@@ -808,23 +881,37 @@ class CRM_Mailchimpsync_Audience
 
         $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
 
+        if ($with_data) {
+          $this->reconcileExtraData($cache_entry, $mailchimp_updates, $tags);
+        }
+        /* We don't do this hook here, preferring to give extensions chance to do things en-masse for efficiency's sake.
         // Other reconcilation operations.
         CRM_Utils_Hook::singleton()->invoke(
           ['mailchimp_updates', 'cache_entry', 'audience'],
           $mailchimp_updates, $cache_entry, $this,
           CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject,
           'mailchimpsync_reconcile_item');
+        */
       }
 
-      if ($mailchimp_updates) {
+      if ($mailchimp_updates || $tags) {
         $cache_entry->sync_status = 'live';
         $cache_entry->save();
 
-        // Queue a mailchimp update.
-        $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
-        $update->mailchimpsync_cache_id = $cache_entry->id;
-        $update->data = json_encode($mailchimp_updates);
-        $update->save();
+        if ($mailchimp_updates) {
+          // Queue a mailchimp update.
+          $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+          $update->mailchimpsync_cache_id = $cache_entry->id;
+          $update->data = json_encode($mailchimp_updates);
+          $update->save();
+        }
+        if ($tags) {
+          // Queue a mailchimp update.
+          $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+          $update->mailchimpsync_cache_id = $cache_entry->id;
+          $update->data = json_encode(['tags' => $tags]);
+          $update->save();
+        }
       }
       else {
         // Updates were not needed or have all been done on the CiviCRM side.
@@ -978,6 +1065,34 @@ class CRM_Mailchimpsync_Audience
     }
   }
 
+  /**
+   * Merge in data.
+   *
+   * @param CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry
+   * @param array &$mailchimp_updates
+   * @param array &$tags
+   */
+  public function reconcileExtraData($cache_entry, &$mailchimp_updates, &$tags) {
+
+    if ($cache_entry->civicrm_data) {
+      $data = unserialize($cache_entry->civicrm_data);
+      if ($data && is_array($data)) {
+        foreach ($data as $d) {
+          if (!empty($d['mailchimp_updates'])) {
+            // We also disallow extensions setting 'status'
+            unset($d['mailchimp_updates']['status']);
+            // We merge our data on top of the extension's so that ours takes precidence.
+            $mailchimp_updates = array_replace_recursive($d['mailchimp_updates'], $mailchimp_updates);
+          }
+          if (!empty($d['tag_updates'])) {
+            // We merge our data on top of the extension's so that ours takes precidence.
+            $tags += $d['tag_updates'];
+          }
+        }
+      }
+    }
+
+  }
   // The following methods deal with the batching phase.
   /**
    *
@@ -1049,29 +1164,41 @@ class CRM_Mailchimpsync_Audience
       // We need to add in details and construct the URL.
       $id = $dao->id;
       $data = json_decode($dao->data, TRUE);
-
       $requests[$id] = [
         'operation_id' => 'mailchimpsync_' . $id,
       ];
 
-      if (!$dao->mailchimp_email) {
-        // Contact was not found on Mailchimp. The $data should already
-        // include the email address.
-        $requests[$id] += [
-          'method'       => 'POST',
-          'path'         => $url_stub,
-        ];
+      if (!isset($data['tags'])) {
+        // Normal update.
+
+        if (!$dao->mailchimp_email) {
+          // Contact was not found on Mailchimp. The $data should already
+          // include the email address.
+          $requests[$id] += [
+            'method'       => 'POST',
+            'path'         => $url_stub,
+          ];
+        }
+        else {
+          // Contact is already known at mailchimp, so we use mailchimp's email.
+          $data['email_address'] = $dao->mailchimp_email;
+          $requests[$id] += [
+            'method'       => 'PUT',
+            'path'         => "$url_stub/" . $api->getMailchimpMemberIdFromEmail($dao->mailchimp_email),
+          ];
+        }
+        $requests[$id]['body'] = json_encode($data);
       }
       else {
-        // Contact is already known at mailchimp, so we use mailchimp's email.
-        $data['email_address'] = $dao->mailchimp_email;
+        // Tags update.
+        // only work for existing contacts.
         $requests[$id] += [
-          'method'       => 'PUT',
-          'path'         => "$url_stub/" . $api->getMailchimpMemberIdFromEmail($dao->mailchimp_email),
+          'method' => 'POST',
+          'path'   => "$url_stub/" . $api->getMailchimpMemberIdFromEmail($dao->mailchimp_email) . "/tags",
+          'body'   => ['tags' => $data],
         ];
       }
 
-      $requests[$id]['body'] = json_encode($data);
 
     }
     if ($requests) {
@@ -1137,8 +1264,16 @@ class CRM_Mailchimpsync_Audience
     CRM_Mailchimpsync::updateGroupsInCacheTable(FALSE, $cache_entry->id);
     $cache_entry = $cache_entry->reloadNewObjectFromDb();
 
+    $complete = FALSE;
+    $stop_time = time() + 60*60;
+    CRM_Utils_Hook::singleton()->invoke(
+      ['audience', 'complete', 'stop_time', 'cache_entry'],
+      $this, $complete, $stop_time, $cache_entry,
+      CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject,
+      'mailchimpsync_data_updates_check');
+
     // Finally.
-    $this->reconcileQueueItem($cache_entry);
+    $this->reconcileQueueItem($cache_entry, TRUE);
 
     return $cache_entry;
   }

@@ -58,6 +58,13 @@
   </field>
 
   <field>
+    <name>civicrm_data</name>
+    <type>blob</type>
+    <comment>PHP serialized data</comment>
+  </field>
+
+
+  <field>
     <name>civicrm_groups</name>
     <type>text</type>
     <comment>Snapshot info about groups the contact has been added/removed since certain date, used by sync</comment>

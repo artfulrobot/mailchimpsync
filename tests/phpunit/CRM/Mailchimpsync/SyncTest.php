@@ -707,7 +707,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Call the thing we want to test:
     $cache_entry->civicrm_groups = $audience->getSubscriptionGroup() . ';Added;' . date('Y-m-d H:i:s');
-    $audience->reconcileQueueItem($cache_entry);
+    $audience->reconcileQueueItem($cache_entry, FALSE);
 
     // Now check that we have an update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
@@ -735,7 +735,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     // Call the thing we want to test.
     // We give it 60s to complete. It should take milliseconds but hey.
     CRM_Mailchimpsync::updateGroupsInCacheTable( TRUE);
-    $audience->reconcileQueueProcess(60, FALSE);
+    $audience->reconcileQueueProcess(60, FALSE, FALSE);
 
     // Now check that we have an update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
@@ -773,7 +773,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Set up updates (this is tested in other tests)
     CRM_Mailchimpsync::updateGroupsInCacheTable(TRUE);
-    $audience->reconcileQueueProcess(FALSE, FALSE);
+    $audience->reconcileQueueProcess(FALSE, FALSE, FALSE);
 
     // Call the thing we want to test.
     $request_count = $audience->submitBatch();
