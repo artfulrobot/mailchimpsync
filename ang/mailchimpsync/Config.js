@@ -72,7 +72,8 @@
         rows.push({
           listId,
           listName: mcsConfig.accounts[list.apiKey].audiences[listId].name,
-          groupName: mailingGroups[list.subscriptionGroup].title
+          groupName: mailingGroups[list.subscriptionGroup].title,
+          webhook: mcsConfig.accounts[list.apiKey].audiences[listId].webhookFound,
         });
         for (const interestId in newValue[listId].interests) {
           rows.push({
@@ -258,9 +259,9 @@
         // Status messages. For defaults, just use "{}"
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
-        crmApi('Mailchimpsync', 'updatebatchwebhook', {
+        crmApi('Mailchimpsync', 'updatewebhook', {
           api_key: this.editData.apiKey,
-          process: 'add'
+          process: 'add_batch_webhook'
         })
         .then(r => {
           mcsConfig = r.values.config;
@@ -268,15 +269,48 @@
         })
       );
     };
-    $scope.bwhDelete = function bwhAdd(apiKey, bwhId) {
+    $scope.bwhDelete = function bwhDelete(apiKey, bwhId) {
       return crmStatus(
         // Status messages. For defaults, just use "{}"
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
-        crmApi('Mailchimpsync', 'updatebatchwebhook', {
+        crmApi('Mailchimpsync', 'updatewebhook', {
           api_key: apiKey,
           id: bwhId,
-          process: 'delete'
+          process: 'delete_batch_webhook'
+        })
+        .then(r => {
+          mcsConfig = r.values.config;
+          $scope.mcsConfig = mcsConfig;
+        })
+      );
+    };
+    $scope.webhookCreate = function webhookCreate() {
+      return crmStatus(
+        // Status messages. For defaults, just use "{}"
+        {start: ts('Contacting Mailchimp...'), success: ts('OK')},
+        // The save action. Note that crmApi() returns a promise.
+        crmApi('Mailchimpsync', 'updatewebhook', {
+          api_key: this.editData.apiKey,
+          list_id: this.editData.listId,
+          process: 'add_webhook'
+        })
+        .then(r => {
+          mcsConfig = r.values.config;
+          $scope.mcsConfig = mcsConfig;
+        })
+      );
+    };
+    $scope.webhookDelete = function webhookDelete(bwhId) {
+      return crmStatus(
+        // Status messages. For defaults, just use "{}"
+        {start: ts('Contacting Mailchimp...'), success: ts('OK')},
+        // The save action. Note that crmApi() returns a promise.
+        crmApi('Mailchimpsync', 'updatewebhook', {
+          api_key: this.editData.apiKey,
+          list_id: this.editData.listId,
+          id: bwhId
+          process: 'delete_webhook'
         })
         .then(r => {
           mcsConfig = r.values.config;

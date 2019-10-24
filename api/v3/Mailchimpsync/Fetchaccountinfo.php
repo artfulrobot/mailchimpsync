@@ -36,10 +36,16 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
 
     // Store lists keyed by their IDs.
     $result['audiences'] = [];
+
+    $webhook_secret = CRM_Mailchimpsync::getBatchWebhookSecret($params['api_key']);
+    $this_webhook = CRM_Mailchimpsync::getWebhookUrl($params['api_key'], $webhook_secret);
+    $result['webhookUrl'] = $this_webhook;
+
     foreach ($audiences['lists'] as $list) {
       $list_id = $list['id'];
       unset($list['id']);
       $result['audiences'][$list_id] = $list;
+
       // Now fetch interests for each list.
       $interest_cats = $api->get("lists/$list_id/interest-categories", [
           'fields' => 'categories.id,categories.title', 'count' => 1000
@@ -51,6 +57,15 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
           $result['audiences'][$list_id]['interests'][$interest['id']] =
             "$interest_cat[title]: $interest[name]";
         }
+      }
+
+      // Now fetch webhooks for each list.
+      $webhooks = $api->get("lists/$list_id/webhooks", [
+          'fields' => 'webhooks.id,webhooks.url,webhooks.events,webhooks.sources', 'count' => 1000
+        ])['webhooks'] ?? [];
+      foreach ($webhooks as $webhook) {
+        $result['audiences'][$list_id]['webhookFound'] = 1;
+        $result['audiences'][$list_id]['webhooks'][] = $webhook;
       }
     }
 

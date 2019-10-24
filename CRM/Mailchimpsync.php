@@ -256,6 +256,20 @@ class CRM_Mailchimpsync
     return CRM_Utils_System::url('civicrm/mailchimpsync/batch-webhook', ['secret' => $secret], TRUE);
   }
   /**
+   * Get the webhook url for this account.
+   *
+   * @param string $api_key
+   * @param string|NULL $secret
+   *
+   * @return string
+   */
+  public static function getWebhookUrl($api_key, $secret=NULL) {
+    if (!$secret) {
+      $secret = static::getBatchWebhookSecret($api_key);
+    }
+    return CRM_Utils_System::url('civicrm/mailchimpsync/webhook', ['secret' => $secret], TRUE);
+  }
+  /**
    * Get the batch webhook secret for this account.
    *
    * @param string $api_key

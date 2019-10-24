@@ -24,7 +24,9 @@
         </thead>
         <tbody>
           <tr ng-repeat="row in syncRows" >
-            <td>{{ row.groupName }}</td>
+            <td>{{ row.groupName }}
+              <span ng-if="row.groupName && !row.webhookFound" class="mcs-status-pill meh" >Webhook missing</span>
+            </td>
 
             <td>{{ row.listName }}</td>
 
@@ -37,16 +39,16 @@
               <span ng-if="row.interestName !== '_new_'">{{ row.interestName }}</span>
             </td>
 
-            <td><!-- actions -->
+            <td class="mcs-actions"><!-- actions -->
               <span ng-if="row.interestName">
                 <span ng-if="row.interestName !== '_new_'">
                   <a href ng-click="interestEdit(row.listId, row.interestId)">{{ts('Edit')}}</a>
                   | <a href ng-click="interestDelete(row.listId, row.interestId)">{{ts('Delete')}}</a>
                 </span>
               </span>
-              <span ng-if="!row.interestName">
+              <span ng-if="!row.interestName"><!-- Audience -->
                 <a href ng-click="listEdit(row.listId)">{{ts('Edit')}}</a> |
-                <a href ng-click="listDelete(row.listId)">{{ts('Delete')}}</a></td>
+                <a href ng-click="listDelete(row.listId)">{{ts('Delete')}}</a>
               </span>
             </td>
           </tr>
@@ -63,13 +65,14 @@
         <thead><tr><th>{{ts('Name')}}</th><th>{{ts('Username')}}</th><th>{{ts('Actions')}}</th></tr></thead>
         <tbody>
           <tr ng-repeat="(apiKey, details) in mcsConfig.accounts" >
-            <td>{{details.account_name}}</td>
+            <td>{{details.account_name}}
+              <span ng-if="!details.batchWebhookFound"
+                class="mcs-status-pill bad">Batch webhook missing</span>
+            </td>
             <td>{{details.username}}</td>
             <td><a href ng-click="accountEdit(apiKey)">{{ts('Edit')}}</a>
               |
               <a href ng-click="accountDelete(apiKey)">{{ts('Delete')}}</a>
-              <span ng-if="!details.batchWebhookFound"
-                class="mcs-status-pill bad">Batch webhook missing</span>
             </td>
           </tr>
         </tbody>
@@ -187,6 +190,24 @@
 
       <a href ng-click="view='overview'" tabstop="-1">{{ts('Cancel Edits')}}</a>
       <button ng-click="listSave()" >{{ts('Save')}}</button>
+      <br/>
+      <br/>
+
+      <!-- webhooks -->
+      <h3>Webhooks for {{mcsConfig.accounts[editData.apiKey].audiences[editData.listId].name}}</h3>
+      <ul>
+        <li ng-repeat="wh in mcsConfig.accounts[editData.apiKey].audiences[editData.listId].webhooks">
+          <span ng-if="wh.url === mcsConfig.accounts[editData.apiKey].webhookUrl"
+                class="mcs-status-pill good">Valid</span>
+          <span ng-if="wh.url !== mcsConfig.accounts[editData.apiKey].webhookUrl"
+                class="mcs-status-pill meh">Invalid</span>
+            {{wh.url}} <a href ng-click="webhookDelete(wh.id)">Delete</a>
+        </li>
+        <li ng-if="!mcsConfig.accounts[editData.apiKey].audiences[editData.listId].webhookFound">
+          <span class="mcs-status-pill meh">Missing</span> <a href ng-click="webhookCreate()">Create correct webhook</a>
+        </li>
+      </ul>
+
     </div>
 
     <!-- Edit interest ========================================================== -->
