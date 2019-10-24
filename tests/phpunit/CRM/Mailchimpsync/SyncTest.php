@@ -94,19 +94,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Get the audience's API so we can provide fixture data.
     $api = $audience->getMailchimpApi();
-    $api->setMockMailchimpData([
-      'list_1' => [
-        'members' => [
-          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
-          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
-          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
-          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
-        ],
-      ],
-    ]);
-
-    // Get audience for this list.
-    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
+    $this->setMockSubscriberData1($api);
 
     // We do this twice to make sure that existing records are updated if they exist.
     // i.e. the first call will find some contacts not in civi and will add them,
@@ -1188,6 +1176,219 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     //$this->dumpTables();
   }
+  /**
+   */
+  public function testWebhookHandlesSubscribe() {
+    // Set up
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+    // Mock get for this contact.
+    $api = $audience->getMailchimpApi();
+    $this->setMockSubscriberData1($api);
+
+    $wh = new CRM_Mailchimpsync_Page_Webhook();
+    $wh->processSubscribe([
+      'list_id' => 'list_1',
+      'type' => 'subscribe',
+      'email' => 'wilma@example.com',
+    ]);
+
+    // We should now have wilma in the database.
+    $c = civicrm_api3('contact', 'getsingle', ['email' => 'wilma@example.com']);
+    $this->assertEquals('Wilma', $c['first_name']);
+    $this->assertEquals('Flintstone', $c['last_name']);
+    $this->assertEquals('Flintstone', $c['last_name']);
+    $this->assertContactIsInGroup($c['id'], $audience->getSubscriptionGroup());
+
+    // Repeat webhook - nothing should change.
+    $wh->processSubscribe([
+      'list_id' => 'list_1',
+      'type' => 'subscribe',
+      'email' => 'wilma@example.com',
+    ]);
+
+    // We should now have wilma in the database.
+    // If a 2nd contact was added, the next line would throw exception.
+    $c = civicrm_api3('contact', 'getsingle', ['email' => 'wilma@example.com']);
+    $this->assertContactIsInGroup($c['id'], $audience->getSubscriptionGroup());
+
+  }
+  /**
+   * Test profile updates are handled.
+   *
+   * Names: a profile update should update CiviCRM's name, if different and as
+   * long as the new name is not blank.
+   */
+  public function testWebhookHandlesProfileUpdate() {
+    // Set up
+    $various = $this->createConfig2();
+    $audience = $various->audience;
+    $cache_entry = $various->cache_entry;
+    $api = $audience->getMailchimpApi();
+
+    // Mock get for this contact.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+
+
+    // Update cache to be in sync with mailchimp.
+    $cache_entry->mailchimp_status = 'subscribed';
+    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
+    $cache_entry->save();
+
+    // Now change data.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'test1', 'lname' => 'Changed', 'email' => 'contact1@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+
+    // Call Profileup
+    $wh = new CRM_Mailchimpsync_Page_Webhook();
+    $wh->processProfile([
+      'list_id' => 'list_1',
+      'type' => 'subscribe',
+      'email' => 'contact1@example.com',
+      'merges' => [
+        'FNAME' => '',
+        'LNAME' => 'Changed',
+      ]
+    ]);
+
+    // We should now have wilma in the database.
+    $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
+    $this->assertContactIsInGroup($c['id'], $audience->getSubscriptionGroup());
+    $this->assertEquals('test1', $c['first_name']);
+    $this->assertEquals('Changed', $c['last_name']);
+
+  }
+  /**
+   */
+  public function testWebhookHandlesUnsubscribe() {
+    // Set up
+    $various = $this->createConfig2();
+    $audience = $various->audience;
+    $cache_entry = $various->cache_entry;
+    $api = $audience->getMailchimpApi();
+
+    // Update cache to be in sync with mailchimp.
+    $cache_entry->mailchimp_status = 'subscribed';
+    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_email = 'contact1@example.com';
+    $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
+    $cache_entry->sync_status = 'ok';
+    $cache_entry->save();
+
+    // Mock get for this contact.
+    // Nb. we spoof a date slightly in the future because this test creates the
+    // civi group contact record then immediately fires the mailchimp, but
+    // we're testing the case when mailchimp comes 2nd.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+        ],
+      ],
+    ]);
+
+    // Call the webhook
+    $wh = new CRM_Mailchimpsync_Page_Webhook();
+    $wh->processUnsubscribe([
+      'type'    => 'unsubscribe',
+      'list_id' => 'list_1',
+      'email'   => 'contact1@example.com',
+    ]);
+
+    $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
+    $this->assertContactIsNotInGroup($c['id'], $audience->getSubscriptionGroup());
+  }
+  /**
+   */
+  public function testWebhookHandlesCleaned() {
+    // Set up
+    $various = $this->createConfig2();
+    $audience = $various->audience;
+    $cache_entry = $various->cache_entry;
+    $api = $audience->getMailchimpApi();
+
+    // Update cache to be in sync with mailchimp.
+    $cache_entry->mailchimp_status = 'subscribed';
+    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_email = 'contact1@example.com';
+    $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
+    $cache_entry->sync_status = 'ok';
+    $cache_entry->save();
+
+    // Mock get for this contact.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+        ],
+      ],
+    ]);
+
+    // Call the webhook
+    $wh = new CRM_Mailchimpsync_Page_Webhook();
+    $wh->processCleaned([
+      'type'    => 'cleaned',
+      'list_id' => 'list_1',
+      'email'   => 'contact1@example.com',
+    ]);
+
+    $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
+    $this->assertContactIsNotInGroup($c['id'], $audience->getSubscriptionGroup());
+
+    // Check the email was put on hold.
+    $email = civicrm_api3('Email', 'getsingle', ['email' => 'contact1@example.com']);
+    $this->assertEquals(1, $email['on_hold'], "Email is not on hold, but should be");
+  }
+  /**
+   */
+  public function testWebhookHandlesEmailUpdate() {
+    // Set up
+    $various = $this->createConfig2();
+    $audience = $various->audience;
+    $cache_entry = $various->cache_entry;
+    $api = $audience->getMailchimpApi();
+
+    // Update cache to be in sync with mailchimp.
+    $cache_entry->mailchimp_status = 'subscribed';
+    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_email = 'contact1@example.com';
+    $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
+    $cache_entry->sync_status = 'ok';
+    $cache_entry->save();
+
+    // Mock get for this contact.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+        ],
+      ],
+    ]);
+
+    // Call the webhook
+    $wh = new CRM_Mailchimpsync_Page_Webhook();
+    $wh->processUpemail([
+      'type'    => 'upemail',
+      'list_id' => 'list_1',
+      'old_email'   => 'contact1@example.com',
+      'new_email'   => 'contact1@example.uk',
+    ]);
+
+    // Check the email was put on hold.
+    $email = civicrm_api3('Email', 'getsingle', ['email' => 'contact1@example.uk', 'contact_id' => $cache_entry->civicrm_contact_id]);
+    $this->assertEquals(1, $email['is_bulkmail'], "Email found but not bulkmail");
+  }
   // Test helpers.
   public function dumpTables() {
     print "\nContacts: \n" . $this->dumpSql("SELECT id, first_name FROM civicrm_contact ORDER BY id") . "\n";
@@ -1205,4 +1406,12 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     return "$output\n";
   }
 
+  public function assertContactIsInGroup($contact_id, $group_id) {
+    $r = civicrm_api3('Contact', 'get', ['contact_id' => $contact_id, 'group' => $group_id]);
+    $this->assertEquals(1, $r['count'], "Expected that contact was in group, but isn't.");
+  }
+  public function assertContactIsNotInGroup($contact_id, $group_id) {
+    $r = civicrm_api3('Contact', 'get', ['contact_id' => $contact_id, 'group' => $group_id]);
+    $this->assertEquals(0, $r['count'], "Expected that contact was not in group, but is.");
+  }
 }

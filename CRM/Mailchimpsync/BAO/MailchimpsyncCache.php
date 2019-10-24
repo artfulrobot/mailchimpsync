@@ -41,6 +41,9 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
    * @return CRM_Mailchimpsync_BAO_MailchimpsyncCache
    */
   public function subscribeInCiviCRM(CRM_Mailchimpsync_Audience $audience) {
+    if (!$this->civicrm_contact_id) {
+      throw new Exception("Cannot subscribeInCiviCRM without knowing contact_id");
+    }
     $contacts = [$this->civicrm_contact_id];
     // Subscribe at CiviCRM.
     CRM_Contact_BAO_GroupContact::addContactsToGroup($contacts, $audience->getSubscriptionGroup(), 'MCsync');
@@ -54,6 +57,9 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
    * @return CRM_Mailchimpsync_BAO_MailchimpsyncCache
    */
   public function unsubscribeInCiviCRM(CRM_Mailchimpsync_Audience $audience) {
+    if (!$this->civicrm_contact_id) {
+      throw new Exception("Cannot unsubscribeInCiviCRM without knowing contact_id");
+    }
     $contacts = [$this->civicrm_contact_id];
     // Record as Removed at CiviCRM.
     CRM_Contact_BAO_GroupContact::removeContactsFromGroup(

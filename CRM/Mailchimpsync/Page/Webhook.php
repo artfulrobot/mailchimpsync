@@ -23,7 +23,12 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
    * Handle subscribe requests
    */
   public function processSubscribe($data) {
-    return $this->processProfile($data);
+    $list_id = $this->extractListId($data);
+    $audience = CRM_Mailchimpsync_Audience::newFromListId($list_id);
+    $email = $this->requireParam($data, 'email');
+    $audience->syncSingle($email);
+
+    return 200;
   }
 
   /**
@@ -59,7 +64,24 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
     $list_id = $this->extractListId($data);
     $audience = CRM_Mailchimpsync_Audience::newFromListId($list_id);
     $email = $this->requireParam($data, 'email');
-    $audience->syncSingle($email);
+    $cache_item = $audience->syncSingle($email);
+
+    // Profile updates mean a user has interacted with their profile.
+    // Therefore we can consider that they are confirming their correct name.
+    // So check we still have correct name.
+    if ($cache_item && $cache_item->civicrm_contact_id>0) {
+      $contact = civicrm_api3('Contact', 'getsingle', ['id' => $cache_item->civicrm_contact_id]);
+      $contact_updates = [];
+      foreach (['first_name' => 'FNAME', 'last_name' => 'LNAME'] as $c => $m) {
+        if (!empty($data['merges'][$m]) && $data['merges'][$m] != $contact[$c]) {
+          $contact_updates[$c] = $data['merges'][$m];
+        }
+      }
+      if ($contact_updates) {
+        civicrm_api3('Contact', 'create', ['id' => $contact['id']] + $contact_updates);
+      }
+    }
+
     return 200;
   }
 

@@ -800,8 +800,10 @@ class CRM_Mailchimpsync_Audience
     $mailchimp_updates = [];
     try {
       $subs = $this->parseSubs($cache_entry->mailchimp_updated, $cache_entry->civicrm_groups);
-      $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
-      if (($mailchimp_updates['status'] ?? '') !== 'unsubscribed') {
+      $final_state_is_subscribed = $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
+
+
+      if ($final_state_is_subscribed) {
         // This is not an unsubscribe request, so process other data, too.
 
         $this->reconcileInterestGroups($mailchimp_updates, $cache_entry, $subs);
@@ -846,6 +848,8 @@ class CRM_Mailchimpsync_Audience
    * @param &array $mailchimp_updates
    * @param CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry
    * @param array $subs
+   *
+   * @return bool TRUE if the person's final state should be subscribed
    */
   public function reconcileSubscriptionGroup(&$mailchimp_updates, CRM_Mailchimpsync_BAO_MailchimpsyncCache $cache_entry, $subs) {
 
@@ -861,21 +865,25 @@ class CRM_Mailchimpsync_Audience
         if ($cache_entry->isSubscribedAtMailchimp()) {
           // Subscribed (could be Pending at MC) at both ends.
           // No subscription group level changes needed.
+          return TRUE;
         }
         else {
           // Mailchimp has unsubscribed/cleaned/archived this contact
           // (or, converted it to transactional - not sure if that happens)
           // So we need to remove this contact from the subscription group.
           $cache_entry->unsubscribeInCiviCRM($this);
+          return FALSE;
         }
       }
       else {
         // Removed, Deleted, or no subscription history in CiviCRM
         if ($cache_entry->isSubscribedAtMailchimp()) {
           $cache_entry->subscribeInCiviCRM($this);
+          return TRUE;
         }
         else {
-          // Not in subscription group and not in CiviCRM's either: subscription is in sync.
+          // Not subscribed at MC and not in CiviCRM's either: subscription is in sync.
+          return FALSE;
         }
       }
     }
@@ -885,6 +893,7 @@ class CRM_Mailchimpsync_Audience
       if ($civicrm_subscription['status'] === 'Added') {
         if ($cache_entry->isSubscribedAtMailchimp()) {
           // in sync.
+          return TRUE;
         }
         else {
           switch ($cache_entry->mailchimp_status) {
@@ -897,6 +906,7 @@ class CRM_Mailchimpsync_Audience
           case 'archived':
           case 'transactional':
             $mailchimp_updates['status'] = 'subscribed';
+            return TRUE;
             break;
 
           case 'cleaned':
@@ -912,9 +922,11 @@ class CRM_Mailchimpsync_Audience
         if ($cache_entry->isSubscribedAtMailchimp()) {
           // Is subscribed at Mailchimp but should not be.
           $mailchimp_updates['status'] = 'unsubscribed';
+          return FALSE;
         }
         else {
           // Not subscribed at Mailchimp or Civi, so already in-sync.
+          return FALSE;
         }
       }
     }

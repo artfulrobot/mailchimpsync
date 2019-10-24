@@ -140,6 +140,9 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       elseif (preg_match(';lists/([^/]+)/members$;', $path, $matches)) {
         return $this->mockGetListMembers($matches[1], $query);
       }
+      elseif (preg_match(';lists/([^/]+)/members/([^/]+)$;', $path, $matches)) {
+        return $this->mockGetListMember($matches[1], $matches[2], $query);
+      }
       elseif (preg_match(';lists/([^/]+)/interest-categories$;', $path, $matches)) {
         return $this->mockGetListInterestCategories($matches[1], $query);
       }
@@ -197,8 +200,8 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
         'email_address' => $member['email'],
         'status'        => $member['status'],
         'merge_fields'  => [
-          'fname' => $member['fname'],
-          'lname' => $member['lname'],
+          'FNAME' => $member['fname'],
+          'LNAME' => $member['lname'],
         ],
         'last_changed' => $member['last_changed'],
         //'interests' => [],
@@ -207,6 +210,16 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
 
     // The live API returns a decoded Array from the JSON body received from the API.
     return $body;
+  }
+  public function mockGetListMember($list_id, $mailchimp_id, $query) {
+
+    $list_members = $this->mockGetListMembers($list_id, $query);
+    foreach ($list_members['members'] as $member) {
+      if ($member['id'] === $mailchimp_id) {
+        return $member;
+      }
+    }
+    throw new InvalidArgumentException("Requested member not found.");
   }
   /**
    * @param string $batch_id 10 byte hex ID.

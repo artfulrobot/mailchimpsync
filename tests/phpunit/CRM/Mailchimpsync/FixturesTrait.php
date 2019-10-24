@@ -2,7 +2,7 @@
 trait CRM_Mailchimpsync_FixturesTrait {
 
   /**
-   * Set up simple config, return an audience for it.
+   * Set up one list in one account linked to one group.
    *
    * @param return CRM_Mailchimpsync_Audience
    */
@@ -64,6 +64,7 @@ trait CRM_Mailchimpsync_FixturesTrait {
    * - Sets up fixture 1 with group
    * - create a test contact
    * - adds contact to test subscription group
+   * - cache is left without mailchimp fields except list_id
    *
    * @return StdClass with props:
    * - CRM_Mailchimpsync_Audience audience
@@ -73,7 +74,7 @@ trait CRM_Mailchimpsync_FixturesTrait {
     // Check that mailchimp updates get added to the mailchimpsync_update table.
     $audience = $this->createConfigFixture1AndGetAudience(TRUE);
     // Create one test contact.
-    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'last_name' => 'test1last', 'email' => 'contact1@example.com'])['id'];
     // Create cache record manually for our fixture.
     $cache_entry = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
     $cache_entry->civicrm_contact_id = $contact_1;
@@ -132,5 +133,17 @@ trait CRM_Mailchimpsync_FixturesTrait {
     ]);
 
     return $various;
+  }
+  public function setMockSubscriberData1($api) {
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
   }
 }
