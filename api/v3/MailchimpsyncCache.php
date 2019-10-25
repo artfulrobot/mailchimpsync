@@ -81,6 +81,8 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
       $d = CRM_Core_DAO::executeQuery($sql)->fetchMap('subs', 'contact_id');
       */
 
+      $names = civicrm_api3('Contact', 'get', ['return' => 'display_name', 'id' => ['IN' => $contact_ids]]);
+
       foreach ($returnValues['values'] as &$row) {
         $audience = CRM_Mailchimpsync_Audience::newFromListId($row['mailchimp_list_id']);
         $parsed = $audience->parseSubs($row['mailchimp_updated'], $row['civicrm_groups']);
@@ -88,6 +90,8 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
         $row['civicrm_updated'] = $parsed[$audience->getSubscriptionGroup()]['updated'];
         $row['most_recent'] = $parsed[$audience->getSubscriptionGroup()]['mostRecent'];
         $row['civicrm_other_groups'] = $parsed;
+
+        $row['civicrm_display_name'] = $names['values'][$row['civicrm_contact_id']]['display_name'] ?? 'Unknown';
 
         if ($row['sync_status'] === 'fail') {
           // As this has failed, look up up to 3 recent failures.

@@ -39,19 +39,39 @@
       <p>Last sync: <em>{{ mcsStatus[selectedListId].lastSyncTimeHuman }}</em></p>
       <div>
         {{ listStats=mcsStatus[selectedListId].stats; "" }}
-        <a href ng-click="cacheView({mailchimp_list_id: selectedListId, mailchimp_status: 'subscribed'})">{{ listStats.subscribed_at_mailchimp }} at mailchimp</a><br/>
-        <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
-        <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
-        <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
-        <br />
-        <a href ng-click="cacheView({mailchimp_list_id: selectedListId, civicrm_status: 'Added'})">{{ listStats.subscribed_at_civicrm }} in CiviCRM</a>
-        <br />
-        <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />
-        <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
-        <div ng-if="listStats.other_fails>0">
-          <br />
-          {{listStats.other_fails}} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status:'fail'})"> other sync fails found</a>
-        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th><a href ng-click="cacheView({mailchimp_list_id: selectedListId, mailchimp_status: 'subscribed'})">{{ listStats.subscribed_at_mailchimp }} at mailchimp</a></th>
+              <th><a href ng-click="cacheView({mailchimp_list_id: selectedListId, civicrm_status: 'Added'})">{{ listStats.subscribed_at_civicrm }} in CiviCRM</a></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
+                <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
+              </td>
+              <td>
+                <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>= </code>{{listStats.subscribed_at_mailchimp - listStats.to_remove_from_mailchimp + listStats.to_add_to_mailchimp}}<br/>
+              </td>
+              <td>
+                <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
+                <div ng-if="listStats.other_fails>0" class="mcs-cache-row__error" >
+                  {{listStats.other_fails}} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status:'fail'})"> other sync fails found</a>
+                </div>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+        <br/>
       </div>
       <p>
         {{fetchLock = mcsStatus[selectedListId].locks.fetchAndReconcile || 'readyToFetch';""}}
@@ -113,12 +133,27 @@
         </table>
       </div>
 
+      <button ng-if="listStats.batch_pending_operations>0" class="danger mcs-abort"
+        ng-click="handleAbortSync()">Abort Updates</button>
+
     </div><!-- ends detail -->
     <!-- Cache Inspect ========================================================== -->
     <div ng-if="view=='cache'">
 
       <div class="mcs-cache-filters" >
         <form name="mcs-cache-filters" crm-ui-id-scope>
+
+          <div class="mcs-cache-filter">
+          <label crm-ui-for="cache.mailchimp_list_id" >Audience</label>
+          <select crm-ui-id="cache.mailchimp_list_id"
+            ng-model="cacheParams.mailchimp_list_id"
+            >
+            <option value="">Any</option>
+            <option ng-repeat="(i, l) in mcsConfig.lists" value="{{i}}">
+              {{ mcsConfig.accounts[l.apiKey].audiences[i].name }}
+            </option>
+          </select>
+          </div>
 
           <div class="mcs-cache-filter">
             <label crm-ui-for="cache.sync_status" >Sync status</label>
@@ -192,26 +227,43 @@
           <div class="mcs-cache-row__header">
             <span class="mcs-cache-row__who">
               <span class="mcs-status-pill {{ mapSyncStatusToColour(row.sync_status) }}" >{{row.sync_status}}</span>
-
-              {{ row.mailchimp_email }} / CiviCRM Contact
-                <span ng-if="!row.civicrm_contact_id">Not yet created</span>
-                <span ng-if="row.civicrm_contact_id"><a href="{{crmUrl('civicrm/contact/view', {reset:1, cid:row.civicrm_contact_id }) }}">{{ row.civicrm_contact_id }}</a></span>
             </span>
             <span class="mcs-cache-row__list">{{ mailingGroups[mcsConfig.lists[row.mailchimp_list_id].subscriptionGroup].title}}</span>
           </div>
           <div class="mcs-cache-row__body">
             <table><thead><th width="33%"></th><th width="33%">Mailchimp</th><th width="33%">CiviCRM</th></tr></thead>
               <tbody>
+
+                <tr>
+                  <td>Member</td>
+                  <td>
+                    <span ng-if="!row.mailchimp_email">None</span>
+                    <span ng-if="row.mailchimp_email">{{ row.mailchimp_email }}</span>
+                  </td>
+                  <td>
+                    <span ng-if="!row.civicrm_contact_id">Not yet created</span>
+                    <span ng-if="row.civicrm_contact_id"><a href="{{crmUrl('civicrm/contact/view', {reset:1, cid:row.civicrm_contact_id }) }}">#{{ row.civicrm_contact_id }} {{ row.civicrm_display_name }}</a></span>
+                  </td>
+                </tr>
+
                 <tr>
                   <td>Status</td>
                   <td><span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status || 'Missing'}}</span></td>
                   <td><span class="mcs-status-pill {{ mapCiviCRMStatusToColour(row.civicrm_status) }}" >{{row.civicrm_status || 'Missing'}}</span></td>
                 </tr>
+
                 <tr>
                   <td>Last updated</td>
                   <td>{{row.mailchimp_updated}}</td>
                   <td>{{row.civicrm_updated}}</td>
                 </tr>
+
+                <tr>
+                  <td>Extra data</td>
+                  <td>{{row.mailchimp_data}}</td>
+                  <td>{{row.civicrm_other_groups}}<br />{{row.civicrm_data}}</td>
+                </tr>
+
               </tbody>
             </table>
             <div ng-if="row.errors" class="mcs-cache-row__error">

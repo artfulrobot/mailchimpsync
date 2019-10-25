@@ -57,6 +57,7 @@
     $scope.cacheParams = {
       sync_status: '',
       mailchimp_status: '',
+      mailchimp_list_id: '',
       civicrm_status: '',
       mailchimp_email: '',
       civicrm_contact_id: '',
@@ -91,12 +92,25 @@
         mailchimp_status: '',
         civicrm_status: '',
         mailchimp_email: '',
+        mailchimp_list_id: '',
         civicrm_contact_id: '',
       }, params);
       $scope.cacheRowCount = null;
       $scope.cacheOptions = { limit: 10, offset: 0 };
       $scope.loadCacheData();
     }
+    $scope.handleAbortSync = function handleAbortSync() {
+      const group_id = mcsConfig.lists[this.selectedListId].subscriptionGroup;
+      if (!confirm("This will cancel all outstanding updates and try to cancel batches being processed for this Audience. You may also want to disable the scheduled job. Sure?")){
+        return;
+      }
+      return crmStatus('Aborting Sync...', 'Done',
+        crmApi('Mailchimpsync', 'abortsync', {group_id: group_id})
+        .then(r => {
+          return getDetailedUpdate.bind(this)()
+        })
+      );
+    };
     $scope.loadCacheData = function loadCacheData(skipRecount) {
       const p = {};
 
