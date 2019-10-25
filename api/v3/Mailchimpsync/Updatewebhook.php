@@ -37,33 +37,45 @@ function civicrm_api3_mailchimpsync_Updatewebhook($params) {
   }
   $api = CRM_Mailchimpsync::getMailchimpApi($params['api_key']);
   $list_id = $params['list_id'] ?? NULL;
+  $type = NULL;
 
   if ($params['process'] === 'add_batch_webhook') {
+    // Create a batch webhook
+    $type = 'batch';
     $url = CRM_Mailchimpsync::getBatchWebhookUrl($params['api_key']);
-    $config['accounts'][$params['api_key']]['batchWebhook'] = $url;
-
     $api->post('batch-webhooks', ['body' => ['url' => $url]]);
   }
   elseif ($params['process'] === 'delete_batch_webhook') {
+    // Delete a batch webhook.
+    $type = 'batch';
     if (empty($params['id'])) {
       throw new API_Exception('ID missing');
     }
     $result = $api->delete('batch-webhooks/' . $params['id']);
   }
   elseif ($params['process'] === 'add_webhook') {
+    // Add a webhook to a list
+    $type = 'audience';
     if (!$list_id) {
       throw new API_Exception("Missing list_id");
     }
     $url = CRM_Mailchimpsync::getWebhookUrl($params['api_key']);
-    $result = $api->post('batch-webhooks', ['body' => ['url' => $url, 'events' => ['subscribe', 'unsubscribe', 'profile', 'upemail', 'cleaned']]]);
-    $cleaner = [];
-    foreach (['url', 'id', 'sources', 'events'] as $_) {
-      $cleaner[$_] = $result[$_] ?? '';
-    }
-    $config['accounts'][$params['api_key']]['audiences'][$list_id]['webhooks'][] = $cleaner;
-    $config['accounts'][$params['api_key']]['audiences'][$list_id]['webhookFound'] = 1;
+    $result = $api->post("lists/$list_id/webhooks",
+      [
+        'body' =>
+        [
+          'url' => $url,
+          'events' => [
+            'subscribe' => TRUE, 'unsubscribe' =>TRUE, 'profile' =>TRUE,
+            'upemail' =>TRUE, 'cleaned' =>TRUE, 'campaign' => FALSE,
+          ],
+          'sources' => [ 'user' => TRUE, 'admin' =>TRUE, 'api' => FALSE ],
+        ],
+      ]);
   }
   elseif ($params['process'] === 'delete_webhook') {
+    // delete a webhook from an audience
+    $type = 'audience';
     if (!$list_id) {
       throw new API_Exception("Missing list_id");
     }
@@ -71,30 +83,19 @@ function civicrm_api3_mailchimpsync_Updatewebhook($params) {
       throw new API_Exception('ID missing');
     }
     $result = $api->delete("lists/$list_id/webhooks/$params[id]");
-
-    // recalc webhooks.
-    $url = CRM_Mailchimpsync::getWebhookUrl($params['api_key']);
-    $config['accounts'][$params['api_key']]['audiences'][$list_id]['webhookFound'] = FALSE;
-    $new_webhooks = [];
-    foreach ($config['accounts'][$params['api_key']]['audiences'][$list_id]['webhooks'] as $_) {
-      if ($_['id'] !== $params['id']) {
-        $new_webhooks[] = $_;
-        $config['accounts'][$params['api_key']]['audiences'][$list_id]['webhookFound'] |= $url === $_['url'];
-      }
-    }
-    $config['accounts'][$params['api_key']]['audiences'][$list_id]['webhooks'] = $new_webhooks;
   }
   else {
     throw new API_Exception('process must be add_batch_webhook|delete_batch_webhook|add_webhook|delete_webhook');
   }
 
-  if (preg_match('/batch/', $params['process'])) {
-    $webhooks = $api->get('batch-webhooks')['webhooks'] ?? [];
-    $config['accounts'][$params['api_key']]['batchWebhooks'] = $webhooks;
-    $config['accounts'][$params['api_key']]['batchWebhookFound'] = in_array($url, array_column($webhooks, 'url'));
+  // Now re-read and store the webhooks.
+  if ($type === 'batch') {
+    $config = CRM_Mailchimpsync::reloadBatchWebhooks($params['api_key']);
+  }
+  elseif ($type === 'audience') {
+    $config = CRM_Mailchimpsync::reloadWebhooks($params['api_key'], $list_id);
   }
 
-  CRM_Mailchimpsync::setConfig($config);
-  $returnValues = ['config' => CRM_Mailchimpsync::setConfig($config)];
+  $returnValues = ['config' => $config];
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Updatewebhook');
 }

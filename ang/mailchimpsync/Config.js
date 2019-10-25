@@ -40,7 +40,8 @@
           mailingGroups: function(crmApi) {
             return crmApi('Group', 'get',  {
               "return": ["id","title"],
-              //"group_type": "Mailing List",
+              "group_type": "Mailing List",
+              "is_hidden": 0,
               "options": {"limit":0, "sort": "title"}
             }).then(r => r.values || []);
           }
@@ -73,7 +74,7 @@
           listId,
           listName: mcsConfig.accounts[list.apiKey].audiences[listId].name,
           groupName: mailingGroups[list.subscriptionGroup].title,
-          webhook: mcsConfig.accounts[list.apiKey].audiences[listId].webhookFound,
+          webhookFound: mcsConfig.accounts[list.apiKey].audiences[listId].webhookFound,
         });
         for (const interestId in newValue[listId].interests) {
           rows.push({
@@ -113,7 +114,7 @@
     $scope.listDelete = function listDelete(listId) {
       if (confirm("Delete audience-group subscription sync? " + listId)) {
         delete(mcsConfig.lists[listId]);
-        return saveConfig('Deleting...', 'Deleted');
+        return saveConfig.bind(this, 'Deleting...', 'Deleted')();
       }
     };
     $scope.listSave = function listSave() {
@@ -301,7 +302,7 @@
         })
       );
     };
-    $scope.webhookDelete = function webhookDelete(bwhId) {
+    $scope.webhookDelete = function webhookDelete(id) {
       return crmStatus(
         // Status messages. For defaults, just use "{}"
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
@@ -309,7 +310,7 @@
         crmApi('Mailchimpsync', 'updatewebhook', {
           api_key: this.editData.apiKey,
           list_id: this.editData.listId,
-          id: bwhId
+          id: id,
           process: 'delete_webhook'
         })
         .then(r => {

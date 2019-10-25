@@ -1480,6 +1480,7 @@ class CRM_Mailchimpsync_Audience
         else {
           // not added at civi, and updating mailchimp? Must be an unsubscribe.
           $stats['to_remove_from_mailchimp'] += $row['c'];
+          $stats['to_add_to_mailchimp'] += $row['c'];
         }
       }
       elseif ($row['sync_status'] === 'ok') {

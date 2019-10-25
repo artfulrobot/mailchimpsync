@@ -63,10 +63,9 @@ function civicrm_api3_mailchimpsync_Fetchaccountinfo($params) {
       $webhooks = $api->get("lists/$list_id/webhooks", [
           'fields' => 'webhooks.id,webhooks.url,webhooks.events,webhooks.sources', 'count' => 1000
         ])['webhooks'] ?? [];
-      foreach ($webhooks as $webhook) {
-        $result['audiences'][$list_id]['webhookFound'] = 1;
-        $result['audiences'][$list_id]['webhooks'][] = $webhook;
-      }
+      $result['audiences'][$list_id]['webhook'] = $this_webhook;
+      $result['audiences'][$list_id]['webhooks'] = $webhooks;
+      $result['audiences'][$list_id]['webhookFound'] = in_array($this_webhook, array_column($webhooks, 'url'));
     }
 
     // Fetch webhooks.

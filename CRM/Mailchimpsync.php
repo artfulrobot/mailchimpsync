@@ -41,6 +41,8 @@ class CRM_Mailchimpsync
    * Set CiviCRM setting for main config.
    *
    * @param array $config
+   *
+   * @return array $config - may have been cleaned.
    */
   public static function setConfig($config) {
 
@@ -108,6 +110,8 @@ class CRM_Mailchimpsync
       CRM_Core_DAO::executeQuery($sql, $params);
 
     }
+
+    return $config;
   }
   /**
    * Submit batches for all lists.
@@ -306,5 +310,43 @@ class CRM_Mailchimpsync
   public static function webhookKeyIsValid($secret) {
     // Don't see it would add any security to use a 2nd key here.
     return static::batchWebhookKeyIsValid($secret);
+  }
+  /**
+   * Reload batch webhook details and store in config.
+   */
+  public static function reloadBatchWebhooks($api_key) {
+    $config = static::getConfig();
+    if (!isset($config['accounts'][$api_key])) {
+      throw new InvalidArgumentException("Given api_key is not a configured account.");
+    }
+
+    $api = static::getMailchimpApi($api_key);
+
+    $webhook_secret = CRM_Mailchimpsync::getBatchWebhookSecret($api_key);
+    $account = & $config['accounts'][$api_key];
+    $account['batchWebhooks'] = $api->get('batch-webhooks')['webhooks'] ?? [];
+    $account['batchWebhookSecret'] = $webhook_secret;
+    $account['batchWebhook'] = CRM_Mailchimpsync::getBatchWebhookUrl($api_key, $webhook_secret);
+    $account['batchWebhookFound'] = in_array($account['batchWebhook'], array_column($account['batchWebhooks'], 'url'));
+    return static::setConfig($config);
+  }
+  /**
+   * Reload webhook details and store in config.
+   */
+  public static function reloadWebhooks($api_key, $list_id) {
+    $config = static::getConfig();
+    if (!isset($config['accounts'][$api_key]['audiences'][$list_id])) {
+      throw new InvalidArgumentException("Given api_key/list_id is not a configured account/known list.");
+    }
+
+    $api = static::getMailchimpApi($api_key);
+
+    $webhook_secret = CRM_Mailchimpsync::getBatchWebhookSecret($api_key);
+
+    $list = & $config['accounts'][$api_key]['audiences'][$list_id];
+    $list['webhooks'] = $api->get("lists/$list_id/webhooks")['webhooks'] ?? [];
+    $list['webhook'] = CRM_Mailchimpsync::getWebhookUrl($api_key, $webhook_secret);
+    $list['webhookFound'] = in_array($list['webhook'], array_column($list['webhooks'], 'url'));
+    return static::setConfig($config);
   }
 }

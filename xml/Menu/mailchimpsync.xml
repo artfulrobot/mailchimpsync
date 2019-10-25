@@ -4,12 +4,12 @@
     <path>civicrm/mailchimpsync/batch-webhook</path>
     <page_callback>CRM_Mailchimpsync_Page_BatchWebhook</page_callback>
     <title>BatchWebhook</title>
-    <access_arguments>access CiviCRM</access_arguments>
+    <access_callback>1</access_callback>
   </item>
   <item>
     <path>civicrm/mailchimpsync/webhook</path>
     <page_callback>CRM_Mailchimpsync_Page_Webhook</page_callback>
     <title>Webhook</title>
-    <access_arguments>access CiviCRM</access_arguments>
+    <access_callback>1</access_callback>
   </item>
 </menu>

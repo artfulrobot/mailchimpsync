@@ -4,16 +4,35 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
 class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
 
   public function run() {
-    if (!CRM_Mailchimpsync::webhookKeyIsValid($_GET['secret'])) {
+    if (!CRM_Mailchimpsync::webhookKeyIsValid($_GET['secret'] ?? '')) {
       CRM_Utils_System::civiExit(401);
     }
+
+    Civi::log()->info("Webhook received:", ['POST' => $_POST]);
 
     // @todo sense check that this webhook does not have API as a cause.
 
     // Hand off to separate methods.
     $method = 'process' . ucfirst($_POST['type'] ?? 'undefined');
-    if (method_exists($this, $method)) {
-      $response_code = $this->$method($_POST);
+    try {
+      if (method_exists($this, $method)) {
+        $response_code = $this->$method($_POST);
+      }
+      elseif ($method === 'processCampaign') {
+        Civi::log()->warning("Webhook set to include Campaign events - this is not a good idea.");
+        $response_code = 204;
+      }
+      else {
+        throw new InvalidArgumentException("Mailchimpsync webhook called with invalid type", ['POST' => $_POST]);
+      }
+    }
+    catch (CRM_Mailchimpsync_CannotSyncException $e) {
+      Civi::log()->info($e->getMessage());
+      $response_code = 204;
+    }
+    catch (Exception $e) {
+      Civi::log()->error("Mailchimp sync webhook error: " . $e->getMessage(), ['POST' => $_POST, 'exception' => $e]);
+      $response_code = 400;
     }
 
     CRM_Utils_System::civiExit($response_code);
@@ -73,8 +92,8 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
       $contact = civicrm_api3('Contact', 'getsingle', ['id' => $cache_item->civicrm_contact_id]);
       $contact_updates = [];
       foreach (['first_name' => 'FNAME', 'last_name' => 'LNAME'] as $c => $m) {
-        if (!empty($data['merges'][$m]) && $data['merges'][$m] != $contact[$c]) {
-          $contact_updates[$c] = $data['merges'][$m];
+        if (!empty($data['data']['merges'][$m]) && $data['data']['merges'][$m] != $contact[$c]) {
+          $contact_updates[$c] = $data['data']['merges'][$m];
         }
       }
       if ($contact_updates) {
@@ -128,6 +147,7 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
         $cache_item->save();
       }
     }
+    return 200;
   }
 
   /**
@@ -139,14 +159,12 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
    * @throws CRM_Mailchimpsync_CannotSyncException if not one of our sync-ed lists.
    */
   public function extractListId($data) {
-    if (empty($data['list_id'])) {
-      throw new InvalidArgumentException("Missing List ID");
-    }
+    $list_id = $this->requireParam($data, 'list_id');
     $config = CRM_Mailchimpsync::getConfig();
-    if (!isset($config['lists'][$data['list_id']])) {
+    if (!isset($config['lists'][$list_id])) {
       throw new CRM_Mailchimpsync_CannotSyncException("$data[list_id] is not a list we keep in sync.");
     }
-    return $data['list_id'];
+    return $list_id;
   }
   /**
    * Extract variable or throw exception.
@@ -157,11 +175,11 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
    * @return string
    * @throws InvalidArgumentException if no list ID in input.
    */
-  public function requireParam($data, $prop) {
-    if (empty($data[$prop])) {
+  public function requireParam($webhook_post_data, $prop) {
+    if (empty($webhook_post_data['data'][$prop])) {
       throw new InvalidArgumentException("Missing '$prop' in data");
     }
-    return $data[$prop];
+    return $webhook_post_data['data'][$prop];
   }
   public function unsubscribeOrClean($data, $type) {
     $list_id = $this->extractListId($data);

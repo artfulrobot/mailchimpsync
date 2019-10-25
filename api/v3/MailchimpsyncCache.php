@@ -47,7 +47,7 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
 
   // Array of list IDs to contactIds.
   $contact_ids = [];
-  if (!empty($returnValues['values'])) {
+  if (empty($params['options']['is_count']) && !empty($returnValues['values'])) {
     $contact_ids = array_filter(array_column($returnValues['values'], 'civicrm_contact_id'));
     $group_ids = CRM_Mailchimpsync::getAllGroupIds();
     if ($contact_ids && $group_ids) {
