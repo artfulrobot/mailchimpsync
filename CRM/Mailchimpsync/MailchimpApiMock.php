@@ -149,6 +149,9 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       elseif (preg_match(';lists/([^/]+)/interest-categories/([^/]+)/interests$;', $path, $matches)) {
         return $this->mockGetListInterests($matches[1], $matches[2], $query);
       }
+      elseif (preg_match(';lists/([^/]+)/webhooks$;', $path, $matches)) {
+        return $this->mockGetListWebhooks($matches[1], $query);
+      }
       elseif ($path === 'batch-webhooks') {
         return $this->mockGetBatchWebhooks();
       }
@@ -233,6 +236,11 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
   /**
    */
   public function mockGetBatchWebhooks() {
+    return ['webhooks' => []];
+  }
+  /**
+   */
+  public function mockGetListWebhooks($list_id, $query) {
     return ['webhooks' => []];
   }
   /**

@@ -1187,9 +1187,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     $wh = new CRM_Mailchimpsync_Page_Webhook();
     $wh->processSubscribe([
-      'list_id' => 'list_1',
       'type' => 'subscribe',
-      'email' => 'wilma@example.com',
+      'data' => [
+        'list_id' => 'list_1',
+        'email' => 'wilma@example.com',
+      ]
     ]);
 
     // We should now have wilma in the database.
@@ -1201,9 +1203,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Repeat webhook - nothing should change.
     $wh->processSubscribe([
-      'list_id' => 'list_1',
       'type' => 'subscribe',
-      'email' => 'wilma@example.com',
+      'data' => [
+        'list_id' => 'list_1',
+        'email' => 'wilma@example.com',
+      ]
     ]);
 
     // We should now have wilma in the database.
@@ -1253,12 +1257,14 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     // Call Profileup
     $wh = new CRM_Mailchimpsync_Page_Webhook();
     $wh->processProfile([
-      'list_id' => 'list_1',
       'type' => 'subscribe',
-      'email' => 'contact1@example.com',
-      'merges' => [
-        'FNAME' => '',
-        'LNAME' => 'Changed',
+      'data' => [
+        'list_id' => 'list_1',
+        'email' => 'contact1@example.com',
+        'merges' => [
+          'FNAME' => '',
+          'LNAME' => 'Changed',
+        ]
       ]
     ]);
 
@@ -1302,8 +1308,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $wh = new CRM_Mailchimpsync_Page_Webhook();
     $wh->processUnsubscribe([
       'type'    => 'unsubscribe',
-      'list_id' => 'list_1',
-      'email'   => 'contact1@example.com',
+      'data' => [
+        'list_id' => 'list_1',
+        'email'   => 'contact1@example.com',
+      ]
     ]);
 
     $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
@@ -1339,8 +1347,10 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $wh = new CRM_Mailchimpsync_Page_Webhook();
     $wh->processCleaned([
       'type'    => 'cleaned',
-      'list_id' => 'list_1',
-      'email'   => 'contact1@example.com',
+      'data' => [
+        'list_id' => 'list_1',
+        'email'   => 'contact1@example.com',
+      ]
     ]);
 
     $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
@@ -1380,9 +1390,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $wh = new CRM_Mailchimpsync_Page_Webhook();
     $wh->processUpemail([
       'type'    => 'upemail',
-      'list_id' => 'list_1',
-      'old_email'   => 'contact1@example.com',
-      'new_email'   => 'contact1@example.uk',
+      'data' => [
+        'list_id' => 'list_1',
+        'old_email'   => 'contact1@example.com',
+        'new_email'   => 'contact1@example.uk',
+      ]
     ]);
 
     // Check the email was put on hold.
