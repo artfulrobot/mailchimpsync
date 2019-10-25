@@ -48,6 +48,10 @@
         <br />
         <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />
         <code>= </code>{{listStats.subscribed_at_civicrm - listStats.cannot_subscribe}}<br/>
+        <div ng-if="listStats.other_fails>0">
+          <br />
+          {{listStats.other_fails}} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status:'fail'})"> other sync fails found</a>
+        </div>
       </div>
       <p>
         {{fetchLock = mcsStatus[selectedListId].locks.fetchAndReconcile || 'readyToFetch';""}}
@@ -180,7 +184,7 @@
 
       <div ng-if="cacheRows === null"><span class="mcs-status-pill grey">Loading</span></div>
 
-      {{ cacheRowCount }} matches
+      <p>{{ cacheRowCount }} matches</p>
 
       <div ng-if="cacheRows !== null">
         <div ng-repeat="row in cacheRows" class="mcs-cache-row">
@@ -200,7 +204,7 @@
               <tbody>
                 <tr>
                   <td>Status</td>
-                  <td><span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status}}</span></td>
+                  <td><span class="mcs-status-pill {{ mapMailchimpStatusToColour(row.mailchimp_status) }}" >{{row.mailchimp_status || 'Missing'}}</span></td>
                   <td><span class="mcs-status-pill {{ mapCiviCRMStatusToColour(row.civicrm_status) }}" >{{row.civicrm_status || 'Missing'}}</span></td>
                 </tr>
                 <tr>
@@ -210,6 +214,9 @@
                 </tr>
               </tbody>
             </table>
+            <div ng-if="row.errors" class="mcs-cache-row__error">
+              {{row.errors}}
+            </div>
           </div>
 
         </div><!-- end of a row -->

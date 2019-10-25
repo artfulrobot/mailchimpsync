@@ -64,7 +64,7 @@ class CRM_Mailchimpsync
         foreach (array_keys($list_config['interests'] ?? []) as $interest_id) {
           if (!isset($list_to_account[$list_id]['interests'][$interest_id])) {
             // Invalid interest.
-            unset($config['lists'][$list_id]['interests'][$interest_id]);
+            unset($config['audiences'][$list_id]['interests'][$interest_id]);
           }
         }
       }

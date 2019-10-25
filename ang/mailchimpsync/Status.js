@@ -114,7 +114,7 @@
         crmApi('MailchimpsyncCache', 'getcount', p)
         .then(r => {
           $scope.cacheRowCount = r.result;
-          Object.assign(p, {options: $scope.cacheOptions});
+          Object.assign(p, {options: $scope.cacheOptions, troubleshoot: 1});
           return (r.result > 0) ? crmApi('MailchimpsyncCache', 'get', p) : {};
         })
         .then(r => {

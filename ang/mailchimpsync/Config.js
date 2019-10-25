@@ -160,17 +160,21 @@
     };
     $scope.interestSave = function interestSave() {
       // Store in config array, keyed by Mailchimp List ID.
-      if (! ('interests' in mcsConfig.lists[this.editData.listId])) {
+      if (! ('interests' in mcsConfig.lists[this.editData.listId])
+        || ( Array.isArray(mcsConfig.lists[this.editData.listId].interests) )
+      ) {
         mcsConfig.lists[this.editData.listId].interests = {};
       }
       mcsConfig.lists[this.editData.listId].interests[this.editData.interestId] = this.editData.groupId;
 
-      // If the API key changed we need to remove the previous item.
+      // If the selected interest changed we need to remove the previous item.
       if (this.editData.originalInterestId && this.editData.originalInterestId !== this.editData.interestId) {
         delete(mcsConfig.lists[this.editData.listId].interests[this.editData.originalListId]);
       }
 
       this.editData.isSaving = true;
+      console.log("Interest save, editData:", this.editData);
+      console.log("Interest save, config:", mcsConfig);
 
       return saveConfig.bind(this)();
     };

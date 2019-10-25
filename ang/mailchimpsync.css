@@ -65,3 +65,7 @@ code.mcs-webhook-url {
   font-size: 0.75rem;
   color: #444;
 }
+.mcs-cache-row__error {
+  color:#a00;
+  padding: 1rem 0;
+}

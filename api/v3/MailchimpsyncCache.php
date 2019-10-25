@@ -37,6 +37,14 @@ function civicrm_api3_mailchimpsync_cache_delete($params) {
 
 /**
  * MailchimpsyncCache.get API
+ */
+function _civicrm_api3_mailchimpsync_cache_get_spec(&$spec) {
+  $spec['troubleshoot'] = [
+    'description' => 'Set this to 1 to include related data that is relatively expensive to compute.',
+  ];
+}
+/**
+ * MailchimpsyncCache.get API
  *
  * @param array $params
  * @return array API result descriptor
@@ -47,7 +55,7 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
 
   // Array of list IDs to contactIds.
   $contact_ids = [];
-  if (empty($params['options']['is_count']) && !empty($returnValues['values'])) {
+  if (empty($params['options']['is_count']) && !empty($params['troubleshoot']) && !empty($returnValues['values'])) {
     $contact_ids = array_filter(array_column($returnValues['values'], 'civicrm_contact_id'));
     $group_ids = CRM_Mailchimpsync::getAllGroupIds();
     if ($contact_ids && $group_ids) {
@@ -80,6 +88,32 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
         $row['civicrm_updated'] = $parsed[$audience->getSubscriptionGroup()]['updated'];
         $row['most_recent'] = $parsed[$audience->getSubscriptionGroup()]['mostRecent'];
         $row['civicrm_other_groups'] = $parsed;
+
+        if ($row['sync_status'] === 'fail') {
+          // As this has failed, look up up to 3 recent failures.
+          $sql = "SELECT id, error_response
+            FROM civicrm_mailchimpsync_update
+            WHERE mailchimpsync_cache_id = %1 AND error_response IS NOT NULL AND error_response != ''
+            ORDER BY id DESC
+            LIMIT 3";
+          $fails = CRM_Core_DAO::executeQuery($sql, [1=>[$row['id'], 'String']])->fetchMap('id', 'error_response');
+          $row['errors'] = '';
+          if ($fails) {
+            foreach ($fails as $fail) {
+              $fail = json_decode($fail);
+              $row['errors'] .= "{$fail->title}: {$fail->detail}";
+            }
+          }
+          else {
+            if ($row['mailchimp_status'] === 'cleaned') {
+              // We can explain this one.
+              $row['errors'] = '"Cleaned" contacts cannot be resubscribed.';
+            }
+            else {
+              $row['errors'] = 'Unknown error: ' . implode("\n", $fails) ;
+            }
+          }
+        }
         unset($row);
       }
 

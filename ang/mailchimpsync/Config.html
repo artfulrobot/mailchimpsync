@@ -25,7 +25,7 @@
         <tbody>
           <tr ng-repeat="row in syncRows" >
             <td>{{ row.groupName }}
-              <span ng-if="row.groupName && !row.webhookFound" class="mcs-status-pill meh" >Webhook missing</span>
+              <span ng-if="row.listName && !row.webhookFound" class="mcs-status-pill meh" >Webhook missing</span>
             </td>
 
             <td>{{ row.listName }}</td>

@@ -185,6 +185,10 @@ class CRM_Mailchimpsync_Audience
         $total = $this->createNewContactsFromMailchimp($remaining_time);
         break;
 
+      case 'readyToCleanUpDuplicates':
+        $total = $this->cleanUpDuplicatesInCache();
+        break;
+
       case 'readyToAddCiviOnly':
         $total = $this->addCiviOnly();
         break;
@@ -577,7 +581,7 @@ class CRM_Mailchimpsync_Audience
    * Call this after calling populateMissingContactIds()
    *
    * Nb. if someone comes in from Mailchimp who is not subscribed there's no
-   * point us adding them in. Instead we remove them from the cache table.
+   * point us adding them in, however we leave them in the cache table.
    *
    * @param null|int time in seconds to spend.
    * @return int No. contacts created.
@@ -633,7 +637,6 @@ class CRM_Mailchimpsync_Audience
 
     if (!in_array($dao->mailchimp_status, ['pending', 'subscribed'])) {
       // Only import contacts that are subscribed.
-      CRM_Core_DAO::executeQuery("DELETE FROM civicrm_mailchimpsync_cache WHERE id = $id");
       return FALSE;
     }
     // Create contact.
@@ -687,8 +690,60 @@ class CRM_Mailchimpsync_Audience
     $total = $dao->affectedRows();
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
-      'to'     => 'readyToCheckForGroupChanges',
+      'to'     => 'readyToCleanUpDuplicates',
       'andLog' => "addCiviOnly: Added $total contacts found in CiviCRM but not in Mailchimp.",
+    ]);
+    return $total;
+  }
+
+  /**
+   *
+   * This is an awkward case:
+   * - Contact X is in Civi but not in Mailchimp, so gets added to the cache
+   *   without mailchimp_member_id
+   *
+   * - Contact X's email address gets added to Mailchimp. This causes a new
+   *   cache record to be created since the first one does not match on member
+   *   id.
+   *
+   * - We then end up with 2 records for the same contact in the cache table.
+   *
+   * This procedure will delete the CiviCRM one from the cache, since it's no longer needed.
+   *
+   */
+  public function cleanUpDuplicatesInCache() {
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'to'     => 'busy',
+      'andLog' => "cleanUpDuplicatesInCache: starting",
+    ]);
+    $sql = "
+      SELECT c1.id
+      FROM civicrm_mailchimpsync_cache c1
+      WHERE c1.mailchimp_list_id = %1
+        AND c1.mailchimp_member_id IS NULL
+        AND EXISTS (
+          SELECT id
+          FROM civicrm_mailchimpsync_cache c2
+          WHERE c2.mailchimp_list_id = %1
+            AND c1.civicrm_contact_id = c2.civicrm_contact_id
+            AND c2.id != c1.id
+            AND c2.mailchimp_member_id IS NOT NULL
+        )
+    ";
+    $ids = CRM_Core_DAO::executeQuery($sql, [
+      1 => [$this->mailchimp_list_id, 'String']
+    ])->fetchMap('id', 'id');
+    if ($ids) {
+      CRM_Core_DAO::executeQuery("DELETE from civicrm_mailchimpsync_cache WHERE id IN ("
+        . implode(', ', $ids)
+        . ")");
+    }
+    $total = count($ids);
+    $this->updateLock([
+      'for'    => 'fetchAndReconcile',
+      'to'     => 'readyToCheckForGroupChanges',
+      'andLog' => "cleanUpDuplicatesInCache: removed $total duplicates.",
     ]);
     return $total;
   }
@@ -700,12 +755,15 @@ class CRM_Mailchimpsync_Audience
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
       'to'     => 'busy',
-      'andLog' => "identifyGroupContactChanges: Copying CiviCRM's subscription group update dates " . ($since ? "since $since" : ''),
+      'andLog' => "identifyGroupContactChanges: Copying CiviCRM's subscription group update dates "
+      . ($since
+        ? "since " . date('j M Y H:i:s', $since)
+        : ''),
     ]);
 
     if ($since) {
       $group_ids = implode(',', $this->getGroupIds());
-      CRM_Core_DAO::executeQuery("
+      $sql = "
           UPDATE civicrm_mailchimpsync_cache c
           SET sync_status = 'todo'
           WHERE mailchimp_list_id = %1
@@ -716,19 +774,21 @@ class CRM_Mailchimpsync_Audience
               WHERE group_id IN ($group_ids)
                     AND h.contact_id = c.civicrm_contact_id
                     AND h.date >= %2
-           )",
-        [
+           )";
+      $dao = CRM_Core_DAO::executeQuery($sql, [
           1 => [$this->getListId(), 'String'],
           2 => [date('YmdHis', $since), 'String'],
-        ]
-      );
+        ]);
     }
     else {
-      // Without a 'since' limit, everything is todo.
-      CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache
-        SET sync_status = 'todo' WHERE mailchimp_list_id = %1 AND sync_status != 'todo'",
+      // Without a 'since' limit, everything is todo, except
+      // contacts that don't exist in CiviCRM and shouldn't be created because
+      // they're not subscribed in Mailchimp.
+      $dao = CRM_Core_DAO::executeQuery("UPDATE civicrm_mailchimpsync_cache
+        SET sync_status = 'todo' WHERE mailchimp_list_id = %1 AND sync_status != 'todo' AND civicrm_contact_id IS NOT NULL",
         [1 => [$this->getListId(), 'String']]);
     }
+    $affected = $dao->affectedRows();
 
     // Update cache of groups.
     CRM_Mailchimpsync::updateGroupsInCacheTable();
@@ -736,7 +796,7 @@ class CRM_Mailchimpsync_Audience
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
       'to'     => $next,
-      'andLog' => "identifyGroupContactChanges: complete.",
+      'andLog' => "identifyGroupContactChanges: complete ($affected records added to todo list).",
     ]);
   }
   /**
@@ -1452,59 +1512,46 @@ class CRM_Mailchimpsync_Audience
       'cannot_subscribe'         => 0,
       'to_remove_from_mailchimp' => 0,
       'todo'                     => 0,
+      'other_fails'              => 0,
       'weird'                    => [],
     ];
     foreach ($result as $row) {
-      if ($row['sync_status'] === 'fail') {
-        if ($row['civicrm_status'] === 'Added') {
-          $stats['cannot_subscribe'] += $row['c'];
+
+      // Regardless of sync_status...
+      $civicrm_is_subscribed = $row['civicrm_status'] === 'Added';
+      if ($civicrm_is_subscribed) {
           $stats['subscribed_at_civicrm'] += $row['c'];
+      }
+      $mailchimp_is_subscribed = in_array($row['mailchimp_status'], ['subscribed', 'pending']);
+      if ($mailchimp_is_subscribed) {
+        $stats['subscribed_at_mailchimp'] += $row['c'];
+      }
+
+
+      // Now special cases
+      if ($row['sync_status'] === 'fail') {
+        if ($civicrm_is_subscribed && !$mailchimp_is_subscribed) {
+          $stats['cannot_subscribe'] += $row['c'];
         }
         else {
-          $stats['failed'] += $row['c'];
+          $stats['other_fails'] += $row['c'];
         }
       }
       elseif ($row['sync_status'] === 'live') {
         // This means we're waiting to update mailchimp
-
-        if ($row['civicrm_status'] === 'Added') {
-          $stats['subscribed_at_civicrm'] += $row['c'];
-
-          if ($row['mailchimp_status'] !== 'subscribed') {
-            $stats['to_add_to_mailchimp'] += $row['c'];
-          }
-          else {
-            $stats['weird'][] = $row;
-          }
-        }
-        else {
-          // not added at civi, and updating mailchimp? Must be an unsubscribe.
-          $stats['to_remove_from_mailchimp'] += $row['c'];
+        if ($civicrm_is_subscribed && !$mailchimp_is_subscribed) {
           $stats['to_add_to_mailchimp'] += $row['c'];
+        }
+        elseif (!$civicrm_is_subscribed && $mailchimp_is_subscribed) {
+          $stats['to_remove_from_mailchimp'] += $row['c'];
         }
       }
       elseif ($row['sync_status'] === 'ok') {
-        // In sync, both subscribed or both unsubscribed
-        if ($row['civicrm_status'] === 'Added') {
-          // Both subscribed.
-          $stats['subscribed_at_civicrm'] += $row['c'];
-          $stats['subscribed_at_mailchimp'] += $row['c'];
-        }
-        else {
-          $stats['weird'][] = $row;
-        }
+        // OK, no changes.
       }
       elseif ($row['sync_status'] === 'todo') {
-        // We're working on a sync.
+        // We're working on a reconciliation.
         $stats['todo'] += $row['c'];
-
-        if ($row['civicrm_status'] === 'Added') {
-          $stats['subscribed_at_civicrm'] += $row['c'];
-        }
-
-        if ($row['mailchimp_status'] === 'subscribed') {
-          $stats['subscribed_at_mailchimp'] += $row['c'];
-        }
       }
       else {
           $stats['weird'][] = $row;
