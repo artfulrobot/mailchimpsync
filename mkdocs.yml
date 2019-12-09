@@ -4,6 +4,7 @@ theme: material
 
 pages:
 - Home: index.md
+- Tutorial: tutorial.md
 - Quick Start: quick-start.md
 - Sync Details: sync-detail.md
 
