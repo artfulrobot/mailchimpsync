@@ -12,6 +12,10 @@
 
 class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiBase implements CRM_Mailchimpsync_MailchimpApiInterface
 {
+  /**
+   * Array of array of calls to methods that don't need to return anything, so we can check they were called.
+   */
+  public $calls = [];
   public $batches = [];
   /** @var array */
   public $mock_mailchimp_data;
@@ -166,10 +170,16 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
       if ($path === 'batches') {
         return $this->mockPostBatches($body);
       }
+      if (preg_match(';batch-webhooks|lists/[a-z0-9_]+/webhooks;', $path)) {
+        return $this->logCall($method, $path, $options);
+      }
     }
     elseif ($method === 'DELETE') {
       if (preg_match(';batches/([a-z0-9]{10})$;', $path, $matches)) {
         return $this->mockDeleteBatches($matches[1]);
+      }
+      if (preg_match(';batch-webhooks/[a-z0-9]+|lists/[a-z0-9_]+/webhooks;', $path)) {
+        return $this->logCall($method, $path, $options);
       }
     }
     throw new Exception("Code not written to mock the request: ". json_encode(
@@ -300,5 +310,11 @@ class CRM_Mailchimpsync_MailchimpApiMock extends CRM_Mailchimpsync_MailchimpApiB
     return [
       'interests' => ['int1int1' => ['name' => 'Interest 1', 'id' => 'int1int1']],
     ];
+  }
+  /**
+   * Just log call.
+   */
+  public function logCall($method, $path, $options) {
+    $this->calls[] = ['method' => $method, 'path' => $path, 'options' => $options];
   }
 }

@@ -14,7 +14,7 @@ use Civi\Test\TransactionalInterface;
  *
  * @group headless
  */
-class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements HeadlessInterface, HookInterface, TransactionalInterface {
+class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements HeadlessInterface, HookInterface, TransactionalInterface {
   use CRM_Mailchimpsync_FixturesTrait;
 
   /** @var CRM_Mailchimpsync_MailchimpApiMock */
@@ -832,13 +832,13 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     ], $got, "Failed checking batches were created as expected.");
   }
   /**
-   * @expected_exception InvalidArgumentException
+   * @expectedException CRM_Mailchimpsync_BatchWebhookNotRelevantException
    */
   public function testBatchWebhookProcessDoesNotProcessUnknownBatch() {
     $wh = new CRM_Mailchimpsync_Page_BatchWebhook();
     $wh->processWebhook([
       'type' => 'batch_operation_completed',
-      'id' => '123456789a'
+      'data' => [ 'id' => '123456789a' ],
     ]);
   }
   /**
@@ -1241,7 +1241,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Update cache to be in sync with mailchimp.
     $cache_entry->mailchimp_status = 'subscribed';
-    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_updated = date('YmdHis');
     $cache_entry->mailchimp_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
     $cache_entry->save();
 
@@ -1286,7 +1286,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Update cache to be in sync with mailchimp.
     $cache_entry->mailchimp_status = 'subscribed';
-    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_updated = date('YmdHis');
     $cache_entry->mailchimp_email = 'contact1@example.com';
     $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
     $cache_entry->sync_status = 'ok';
@@ -1299,7 +1299,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
-          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('YmdHis', time() + 2) ],
         ],
       ],
     ]);
@@ -1328,7 +1328,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Update cache to be in sync with mailchimp.
     $cache_entry->mailchimp_status = 'subscribed';
-    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_updated = date('YmdHis');
     $cache_entry->mailchimp_email = 'contact1@example.com';
     $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
     $cache_entry->sync_status = 'ok';
@@ -1338,7 +1338,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
-          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('YmdHis', time() + 2) ],
         ],
       ],
     ]);
@@ -1371,7 +1371,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
 
     // Update cache to be in sync with mailchimp.
     $cache_entry->mailchimp_status = 'subscribed';
-    $cache_entry->mailchimp_updated = date('Ymdhis');
+    $cache_entry->mailchimp_updated = date('YmdHis');
     $cache_entry->mailchimp_email = 'contact1@example.com';
     $cache_entry->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache_entry->mailchimp_email);
     $cache_entry->sync_status = 'ok';
@@ -1381,7 +1381,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit_Framework_TestCase implements 
     $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
-          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('Ymdhis', time() + 2) ],
+          [ 'fname' => 'test1', 'lname' => '', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => date('YmdHis', time() + 2) ],
         ],
       ],
     ]);

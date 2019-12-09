@@ -11,7 +11,12 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
  */
 function _civicrm_api3_mailchimpsync_Updatewebhook_spec(&$spec) {
   $spec['process']['api.required'] = 1;
-  $spec['process']['api.options'] = ['add', 'delete'];
+  $spec['process']['api.options'] = [
+    'add_batch_webhook',
+    'delete_batch_webhook',
+    'add_webhook',
+    'delete_webhook'
+  ];
   $spec['api_key'] = [
     'api.required' => 1,
     'description' => 'Mailchimp API Key',

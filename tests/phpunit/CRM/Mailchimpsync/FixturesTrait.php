@@ -31,7 +31,8 @@ trait CRM_Mailchimpsync_FixturesTrait {
         'mock_account_1' => [
           'audiences' => [
             'list_1' => [ ]
-          ]
+          ],
+          'batchWebhookSecret' => 'MockBatchWebhookSecret',
         ]
       ]
     ]);
