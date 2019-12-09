@@ -57,6 +57,8 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
     $returnValues[$list_id]['in_sync'] =
       ($returnValues[$list_id]['locks']['fetchAndReconcile'] ?? 'readyToFetch') === 'readyToFetch'
       && $returnValues[$list_id]['stats']['mailchimp_updates_pending'] === 0
+      && $returnValues[$list_id]['stats']['to_add_to_mailchimp'] === 0
+      && $returnValues[$list_id]['stats']['to_remove_from_mailchimp'] === 0
       && !empty($returnValues[$list_id]['lastSyncTime']);
 
     $returnValues[$list_id]['lastSyncTimeHuman'] = 'never';

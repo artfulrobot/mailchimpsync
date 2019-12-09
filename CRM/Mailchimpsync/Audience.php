@@ -1547,7 +1547,14 @@ class CRM_Mailchimpsync_Audience
         }
       }
       elseif ($row['sync_status'] === 'ok') {
-        // OK, no changes.
+        // OK, we *were* in sync, are we still?
+
+        if ($civicrm_is_subscribed && !$mailchimp_is_subscribed) {
+          $stats['to_add_to_mailchimp'] += $row['c'];
+        }
+        elseif (!$civicrm_is_subscribed && $mailchimp_is_subscribed) {
+          $stats['to_remove_from_mailchimp'] += $row['c'];
+        }
       }
       elseif ($row['sync_status'] === 'todo') {
         // We're working on a reconciliation.

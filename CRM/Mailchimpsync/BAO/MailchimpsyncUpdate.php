@@ -17,6 +17,8 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
    */
   public function handleMailchimpUpdatesResponse(array $response) {
 
+    // Civi::log()->info("handleMailchimpUpdatesResponse: " . json_encode($response));
+
     // Mark this update completed.
     $this->completed = 1;
 
@@ -79,6 +81,8 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
     }
 
     // Update status. @todo issue #5
+    $cache->mailchimp_status = $response['status'];
+    $cache->mailchimp_updated = date('YmdHis', strtotime($response['last_changed']));
 
     // Are there any other updates pending for our contact?
     $other = new static();
