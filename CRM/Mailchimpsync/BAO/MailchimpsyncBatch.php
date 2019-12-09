@@ -88,6 +88,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncBatch extends CRM_Mailchimpsync_DAO_Mai
     // Loop responses in this file.
     foreach ($file['data'] as $response) {
       $operation_id = $response['operation_id'] ?? '';
+      $matches = NULL;
       if (!preg_match('/^mailchimpsync_(\d+)$/', $operation_id, $matches)) {
         // Odd, this does not look like it's for us.
         throw new InvalidArgumentException("Received unrecognised operation id in mailchimp batch: $this->mailchimp_batch_id, operation: $operation_id");
