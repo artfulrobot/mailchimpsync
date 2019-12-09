@@ -63,7 +63,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
    *
    * We can mark the sync cache as OK if there are no other live updates pointing to the cache record.
    *
-   * @param array $response - Mailchimp respons data.
+   * @param array $response - Mailchimp response data.
    */
   public function handleMailchimpUpdateSuccess(array $response) {
 
@@ -77,6 +77,8 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncUpdate extends CRM_Mailchimpsync_DAO_Ma
       $cache->mailchimp_member_id = $response['id'];
       $updated = TRUE;
     }
+
+    // Update status. @todo issue #5
 
     // Are there any other updates pending for our contact?
     $other = new static();

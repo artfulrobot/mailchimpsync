@@ -80,7 +80,8 @@ function civicrm_api3_mailchimpsync_Fetchandreconcile($params) {
   if (!empty($params['stop_on'])) {
     $default_params['stop_on'] = $params['stop_on'];
   }
-  do {
+
+  while ($audiences && time() < $stop_time) {
     $audience = CRM_Mailchimpsync_Audience::newFromListId(array_shift($audiences));
     if (!empty($params['force_restart'])) {
       // Force reset before we start(!)
@@ -98,8 +99,7 @@ function civicrm_api3_mailchimpsync_Fetchandreconcile($params) {
       'group_id' => $audience->getSubscriptionGroup(),
       'status'   => $audience->getStatus(),
     ];
-
-  } while ($audiences && time() < $stop_time);
+  }
 
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Fetchandreconcile');
 }

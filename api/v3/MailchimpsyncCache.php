@@ -85,7 +85,7 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
 
       foreach ($returnValues['values'] as &$row) {
         $audience = CRM_Mailchimpsync_Audience::newFromListId($row['mailchimp_list_id']);
-        $parsed = $audience->parseSubs($row['mailchimp_updated'], $row['civicrm_groups']);
+        $parsed = $audience->parseSubs($row['mailchimp_updated'] ?? NULL, $row['civicrm_groups']);
         $row['civicrm_status'] = $parsed[$audience->getSubscriptionGroup()]['status'];
         $row['civicrm_updated'] = $parsed[$audience->getSubscriptionGroup()]['updated'];
         $row['most_recent'] = $parsed[$audience->getSubscriptionGroup()]['mostRecent'];
