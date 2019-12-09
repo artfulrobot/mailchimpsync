@@ -11,6 +11,7 @@ use Civi\Test\TransactionalInterface;
  */
 class api_v3_Mailchimpsync_UpdateconfigTest extends \PHPUnit\Framework\TestCase implements HeadlessInterface, HookInterface, TransactionalInterface {
   use \Civi\Test\Api3TestTrait;
+  use CRM_Mailchimpsync_FixturesTrait;
 
   /**
    * Set up for headless tests.
@@ -41,12 +42,44 @@ class api_v3_Mailchimpsync_UpdateconfigTest extends \PHPUnit\Framework\TestCase 
   }
 
   /**
-   * Simple example test case.
-   *
-   * Note how the function name begins with the word "test".
    */
-  public function testApiExample() {
-    $this->markTestSkipped('test not written');
+  public function testJsonConfigIsAccepted() {
+
+    $group_id = civicrm_api3('Group', 'create', [
+      'name'       => "test_list_1",
+      'title'      => "test_list_1",
+      'group_type' => "Mailing List",
+    ])['id'];
+
+    $data = [
+        'lists' => [
+          'list_1' => [
+            'apiKey' => 'mock_account_1',
+            'subscriptionGroup' => $group_id,
+          ],
+        ],
+        'accounts' => [
+          'mock_account_1' => [
+            'audiences' => [
+              'list_1' => [ ]
+            ],
+            'batchWebhookSecret' => 'MockBatchWebhookSecret',
+          ]
+        ]
+      ];
+    civicrm_api3('Mailchimpsync', 'updateconfig', [ 'config' => json_encode($data) ]);
+
+    $config = CRM_Mailchimpsync::getConfig();
+    $this->assertInternalType('array', $config);
+    $this->assertEquals($data, $config);
+  }
+
+  /**
+   * @expectedException CiviCRM_API3_Exception
+   * @expectedExceptionMessage Failed to parse JSON in 'config' parameter.
+   */
+  public function testInvalidJsonRejected() {
+    civicrm_api3('Mailchimpsync', 'updateconfig', [ 'config' => 'invalid json' ]);
   }
 
 }
