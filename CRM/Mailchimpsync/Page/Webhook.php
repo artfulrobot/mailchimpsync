@@ -4,17 +4,24 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
 class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
 
   public function run() {
+
     if (!CRM_Mailchimpsync::webhookKeyIsValid($_GET['secret'] ?? '')) {
-      CRM_Utils_System::civiExit(401);
+      // We must have the secret.
+      http_response_code(401);
+      CRM_Utils_System::civiExit();
     }
 
-    Civi::log()->info("Webhook received:", ['POST' => $_POST]);
+    if (empty($_POST)) {
+      // Mailchimp does this to test whether the URL works.
+      CRM_Utils_System::civiExit();
+    }
 
+    Civi::log()->info("Webhook received:\n" . json_encode($_POST));
     // @todo sense check that this webhook does not have API as a cause.
 
-    // Hand off to separate methods.
-    $method = 'process' . ucfirst($_POST['type'] ?? 'undefined');
     try {
+      // Hand off to separate methods.
+      $method = 'process' . ucfirst($_POST['type'] ?? 'undefined');
       if (method_exists($this, $method)) {
         $response_code = $this->$method($_POST);
       }
@@ -23,7 +30,7 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
         $response_code = 204;
       }
       else {
-        throw new InvalidArgumentException("Mailchimpsync webhook called with invalid type", ['POST' => $_POST]);
+        throw new InvalidArgumentException("Mailchimpsync webhook called with invalid type\n" . json_encode($_POST, JSON_PRETTY_PRINT));
       }
     }
     catch (CRM_Mailchimpsync_CannotSyncException $e) {
@@ -35,7 +42,8 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
       $response_code = 400;
     }
 
-    CRM_Utils_System::civiExit($response_code);
+    http_response_code($response_code);
+    CRM_Utils_System::civiExit();
   }
 
   /**

@@ -188,11 +188,11 @@
           { config: JSON.stringify(mcsConfig) })
         .then(r => {
           console.log("Saved value", r);
-          this.editData.isSaving = false;
+          $scope.editData.isSaving = false;
           mcsConfig = r.values.config;
           $scope.mcsConfig = mcsConfig;
           if (!noReturnToOverview) {
-            this.view = 'overview';
+            $scope.view = 'overview';
           }
         })
       );
