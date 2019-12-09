@@ -1,5 +1,15 @@
 (function(angular, $, _) {
 
+  function convertConfigFromApiResult(config) {
+    // PHP converts empty array to json array but we need an objects.
+    if (!(('lists' in config) && !Array.isArray(config.lists))) {
+      config.lists = {};
+    }
+    if (!(('accounts' in config) && !Array.isArray(config.accounts))) {
+      config.accounts = {};
+    }
+  }
+
   angular.module('mailchimpsync').config(function($routeProvider) {
       $routeProvider.when('/mailchimpsync/config', {
         controller: 'MailchimpsyncConfig',
@@ -18,14 +28,7 @@
                 result = {lists: {}, accounts: {}};
               }
 
-              // PHP converts empty array to json array but we need an objects.
-              if (!(('lists' in result) && !Array.isArray(result.lists))) {
-                result.lists = {};
-              }
-              if (!(('accounts' in result) && !Array.isArray(result.accounts))) {
-                result.accounts = {};
-              }
-
+              convertConfigFromApiResult(result);
               console.info("loaded config:", result);
               return result;
             },
@@ -67,7 +70,6 @@
 
     $scope.$watch('mcsConfig.lists', function(newValue, oldValue, scope) {
       const rows = [];
-      console.log("syncRows called");
       for (const listId in newValue) {
         const list = newValue[listId];
         rows.push({
@@ -192,17 +194,11 @@
           { config: JSON.stringify(mcsConfig) })
         .then(r => {
           r = r.values.config;
-          console.log("Saved value", r);
           if ($scope.editData) {
             $scope.editData.isSaving = false;
           }
-          // PHP converts empty array to json array but we need an objects.
-          if (!(('lists' in r) && !Array.isArray(r.lists))) {
-            r.lists = {};
-          }
-          if (!(('accounts' in r) && !Array.isArray(r.accounts))) {
-            r.accounts = {};
-          }
+          convertConfigFromApiResult(r);
+          console.log("Config reloaded", r);
           mcsConfig = r;
           $scope.mcsConfig = mcsConfig;
           if (!noReturnToOverview) {
@@ -226,7 +222,7 @@
       $scope.view = 'editAccount';
     };
     $scope.accountDelete = function accountDelete(accountId) {
-      if (confirm("Delete account? This will remove all sync connnections too." + accountId)) {
+      if (confirm("Delete account? This will remove all sync connnections too.")) {
         delete(mcsConfig.accounts[accountId]);
 
         for (const listId in mcsConfig.lists) {
@@ -283,6 +279,7 @@
           process: 'add_batch_webhook'
         })
         .then(r => {
+          convertConfigFromApiResult(r.values.config);
           mcsConfig = r.values.config;
           $scope.mcsConfig = mcsConfig;
         })
@@ -299,6 +296,7 @@
           process: 'delete_batch_webhook'
         })
         .then(r => {
+          convertConfigFromApiResult(r.values.config);
           mcsConfig = r.values.config;
           $scope.mcsConfig = mcsConfig;
         })
@@ -315,6 +313,7 @@
           process: 'add_webhook'
         })
         .then(r => {
+          convertConfigFromApiResult(r.values.config);
           mcsConfig = r.values.config;
           $scope.mcsConfig = mcsConfig;
         })
@@ -332,6 +331,7 @@
           process: 'delete_webhook'
         })
         .then(r => {
+          convertConfigFromApiResult(r.values.config);
           mcsConfig = r.values.config;
           $scope.mcsConfig = mcsConfig;
         })
