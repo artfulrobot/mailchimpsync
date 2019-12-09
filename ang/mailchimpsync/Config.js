@@ -96,7 +96,7 @@
     $scope.listEdit = function listEdit(listId) {
       console.log('listEdit', listId);
       $scope.editData = {
-        listId: listId,
+        listId: listId || '',
         groupId: '',
         apiKey: '',
         originalListId: listId || null,
@@ -105,7 +105,7 @@
       if (listId && listId in mcsConfig.lists) {
         //xxx
         const d = mcsConfig.lists[listId];
-        console.log('listEdit', listId, mcsConfig, d);
+        console.log('listEdit existing ', listId, mcsConfig, d);
         $scope.editData.groupId = d.subscriptionGroup;
         $scope.editData.apiKey = d.apiKey;
       }
@@ -114,28 +114,32 @@
     $scope.listDelete = function listDelete(listId) {
       if (confirm("Delete audience-group subscription sync? " + listId)) {
         delete(mcsConfig.lists[listId]);
-        return saveConfig.bind(this, 'Deleting...', 'Deleted')();
+        return saveConfig('Deleting...', 'Deleted');
       }
     };
     $scope.listSave = function listSave() {
+      if (!$scope.editData.listId) {
+        alert("Choose an audience");
+        return;
+      }
       // First copy the list stuff back to the original,
       // then save.
       const newListConfig = {
           subscriptionGroup: $scope.editData.groupId,
-          apiKey: this.editData.apiKey
+          apiKey: $scope.editData.apiKey
         };
 
       // Store in config array, keyed by Mailchimp List ID.
-      mcsConfig.lists[this.editData.listId] = newListConfig;
+      mcsConfig.lists[$scope.editData.listId] = newListConfig;
 
       // If the API key changed we need to remove the previous item.
-      if (this.editData.originalListId && this.editData.originalListId !== this.editData.listId) {
-        delete(mcsConfig.lists[this.editData.originalListId]);
+      if ($scope.editData.originalListId && $scope.editData.originalListId !== $scope.editData.listId) {
+        delete(mcsConfig.lists[$scope.editData.originalListId]);
       }
 
-      this.editData.isSaving = true;
+      $scope.editData.isSaving = true;
 
-      return saveConfig.bind(this)();
+      return saveConfig();
     };
     $scope.interestEdit = function interestEdit(listId, interestId) {
       $scope.editData = {
@@ -160,26 +164,26 @@
     };
     $scope.interestSave = function interestSave() {
       // Store in config array, keyed by Mailchimp List ID.
-      if (! ('interests' in mcsConfig.lists[this.editData.listId])
-        || ( Array.isArray(mcsConfig.lists[this.editData.listId].interests) )
+      if (! ('interests' in mcsConfig.lists[$scope.editData.listId])
+        || ( Array.isArray(mcsConfig.lists[$scope.editData.listId].interests) )
       ) {
-        mcsConfig.lists[this.editData.listId].interests = {};
+        mcsConfig.lists[$scope.editData.listId].interests = {};
       }
-      mcsConfig.lists[this.editData.listId].interests[this.editData.interestId] = this.editData.groupId;
+      mcsConfig.lists[$scope.editData.listId].interests[$scope.editData.interestId] = $scope.editData.groupId;
 
       // If the selected interest changed we need to remove the previous item.
-      if (this.editData.originalInterestId && this.editData.originalInterestId !== this.editData.interestId) {
-        delete(mcsConfig.lists[this.editData.listId].interests[this.editData.originalListId]);
+      if ($scope.editData.originalInterestId && $scope.editData.originalInterestId !== $scope.editData.interestId) {
+        delete(mcsConfig.lists[$scope.editData.listId].interests[$scope.editData.originalListId]);
       }
 
-      this.editData.isSaving = true;
-      console.log("Interest save, editData:", this.editData);
+      $scope.editData.isSaving = true;
+      console.log("Interest save, editData:", $scope.editData);
       console.log("Interest save, config:", mcsConfig);
 
-      return saveConfig.bind(this)();
+      return saveConfig();
     };
     function saveConfig(msgDoing, msgDone, noReturnToOverview) {
-      console.log("saveConfig noRet:", noReturnToOverview);
+      console.log("saveConfig noRet:", noReturnToOverview, mcsConfig);
       return crmStatus(
         // Status messages. For defaults, just use "{}"
         {start: ts(msgDoing || 'Saving...'), success: ts(msgDone || 'Saved')},
@@ -187,9 +191,19 @@
         crmApi('Mailchimpsync', 'updateconfig',
           { config: JSON.stringify(mcsConfig) })
         .then(r => {
+          r = r.values.config;
           console.log("Saved value", r);
-          $scope.editData.isSaving = false;
-          mcsConfig = r.values.config;
+          if ($scope.editData) {
+            $scope.editData.isSaving = false;
+          }
+          // PHP converts empty array to json array but we need an objects.
+          if (!(('lists' in r) && !Array.isArray(r.lists))) {
+            r.lists = {};
+          }
+          if (!(('accounts' in r) && !Array.isArray(r.accounts))) {
+            r.accounts = {};
+          }
+          mcsConfig = r;
           $scope.mcsConfig = mcsConfig;
           if (!noReturnToOverview) {
             $scope.view = 'overview';
@@ -231,31 +245,31 @@
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
         crmApi('Mailchimpsync', 'fetchaccountinfo', {
-          api_key: this.editData.apiKey
+          api_key: $scope.editData.apiKey
         })
         .then(r => {
           console.log("Fetch results value", r);
 
-          if (this.editData.originalAccountId && this.editData.originalAccountId !== this.editData.apiKey) {
+          if ($scope.editData.originalAccountId && $scope.editData.originalAccountId !== $scope.editData.apiKey) {
             // The API Key changed...
 
             // ...Update any lists that used the old API key.
             for (const listId in mcsConfig.lists) {
-              if (mcsConfig.lists[listId].apiKey === this.editData.originalAccountId) {
-                mcsConfig.lists[listId].apiKey = this.editData.apiKey;
+              if (mcsConfig.lists[listId].apiKey === $scope.editData.originalAccountId) {
+                mcsConfig.lists[listId].apiKey = $scope.editData.apiKey;
               }
             }
 
             // ...Delete the old value from the accounts.
-            delete(mcsConfig.accounts[this.editData.originalAccountId]);
+            delete(mcsConfig.accounts[$scope.editData.originalAccountId]);
           }
 
           // Store details on main config.
-          mcsConfig.accounts[this.editData.apiKey] = Object.assign(
-            {apiKey: this.editData.apiKey},
+          mcsConfig.accounts[$scope.editData.apiKey] = Object.assign(
+            {apiKey: $scope.editData.apiKey},
             r.values);
 
-          return saveConfig.bind(this)('Saving...', 'Saved', !r.values.batchWebhookFound);
+          return saveConfig('Saving...', 'Saved', !r.values.batchWebhookFound);
         })
       );
     };
@@ -265,7 +279,7 @@
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
         crmApi('Mailchimpsync', 'updatewebhook', {
-          api_key: this.editData.apiKey,
+          api_key: $scope.editData.apiKey,
           process: 'add_batch_webhook'
         })
         .then(r => {
@@ -296,8 +310,8 @@
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
         crmApi('Mailchimpsync', 'updatewebhook', {
-          api_key: this.editData.apiKey,
-          list_id: this.editData.listId,
+          api_key: $scope.editData.apiKey,
+          list_id: $scope.editData.listId,
           process: 'add_webhook'
         })
         .then(r => {
@@ -312,8 +326,8 @@
         {start: ts('Contacting Mailchimp...'), success: ts('OK')},
         // The save action. Note that crmApi() returns a promise.
         crmApi('Mailchimpsync', 'updatewebhook', {
-          api_key: this.editData.apiKey,
-          list_id: this.editData.listId,
+          api_key: $scope.editData.apiKey,
+          list_id: $scope.editData.listId,
           id: id,
           process: 'delete_webhook'
         })
