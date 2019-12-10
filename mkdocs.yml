@@ -5,8 +5,13 @@ theme: material
 pages:
 - Home: index.md
 - Tutorial: tutorial.md
+- How Tos:
+    - 'How to sync an existing audience': howto/sync-existing.md
+    - 'How to run a sync': howto/run-sync.md
+- Discussions: discussion/index.md
+- Reference: reference/index.md
+- Reference: reference/sync-detail.md
 - Quick Start: quick-start.md
-- Sync Details: sync-detail.md
 
 markdown_extensions:
   - attr_list

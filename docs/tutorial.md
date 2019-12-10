@@ -30,14 +30,14 @@ I'm calling mine *Rich's test newsletter recipients*. Remember to tick the **Mai
 
 Visit **Administer » System Settings » Configure Mailchimp Sync**.
 
-![screenshot](./config-screen-blank.png)
+![screenshot](./images/config-screen-blank.png)
 
 Click ❶ **Add new account** and enter your Mailchimp API Key and
 click **Save Account**.
 
 There will be a pause while information is fetched from Mailchimp. If your API key was entered correctly, you should see something like this:
 
-![screenshot](./config-adding-account.png)
+![screenshot](./images/config-adding-account.png)
 
 There's a warning about a missing "Batch webhook". Fix this by clicking the **Add webhook** link and after a pause the screen should update to say: "Batch webhook correctly registered".
 
@@ -49,11 +49,11 @@ Click the **Add new subscription sync** link.
 
 Choose your Mailchimp account, Mailchimp audience and CiviCRM group from the drop-downs. Again, you'll see a warning about a missing webhook, and again just click the **Create webhook** link and it should now all be ready like this:
 
-![screenshot](./config-link-list.png)
+![screenshot](./images/config-link-list.png)
 
 Click **Save** to save your configuration and you should now see something like this:
 
-![screenshot](./config-tutorial-complete.png)
+![screenshot](./images/config-tutorial-complete.png)
 
 
 !!! success "Congratulations!"
@@ -64,7 +64,7 @@ Click **Save** to save your configuration and you should now see something like 
 
 Visit **Mailings » Mailchimp Sync Status**. It should show your sync connection as Not In Sync because no sync has been run yet:
 
-![screenshot](status-tutorial-1.png)
+![screenshot](./images/status-tutorial-1.png)
 
 !!! note
     If yours says *In Sync* instead of *Not In Sync*, don't worry, that's fine, it means your scheduled job has just run and so it's now in sync.
@@ -92,7 +92,7 @@ Normally the sync runs hourly, but that's going to make the tutorial take quite 
 
 Navigate back to the status page at **Mailings » Mailchimp sync status**. This time, click the name of your list to see some extra details like this:
 
-![screenshot](./status-tutorial-2.png)
+![screenshot](./images/status-tutorial-2.png)
 
 The sync process goes through many steps, so when you first get here it might not have reached In Sync status yet. You can keep hitting the **Refresh** button if you like, you should get to a screen like the above.
 
@@ -111,9 +111,9 @@ Go back to your contact in CiviCRM and **remove** them from your test newsletter
 
 Then go back to the status page - note it says *Not In Sync*, and click on your list to get to the detailed page as in the last screenshot. It should now show:
 
-- 1 at Mailchimp: that's the count from the last sync run, so it's not changed yet.
-- -1 to remove from Mailchimp: it's showing you that we need to remove a contact from Mailchimp.
-- =0 at the bottom shows that this will result in the numbers at Mailchimp balancing CiviCRM's version again.
+- *1 at Mailchimp*: that's the count from the last sync run, so it's not changed yet.
+- *-1 to remove from Mailchimp*: it's showing you that we need to remove a contact from Mailchimp.
+- *=0* at the bottom shows that this will result in the numbers at Mailchimp balancing CiviCRM's version again.
 
 The three status indicators are still all green; they're only not green when something is happening, and at the moment we're just waiting for the next sync operation to begin.
 
@@ -123,17 +123,18 @@ Log in to your Mailchimp account, find your audience and add a (different) subsc
 
 Now go back to the status page in CiviCRM. And click **Refresh**. With a bit of luck you'll see the numbers have changed:
 
-- 2 at Mailchimp: this is because you added one!
-- -1 to remove from Mailchimp: this still hasn't happened yet,
-- =1 at the bottom shows we're expecting one subscriber once we're all done.
+- *2 at Mailchimp*: this is because you added one!
+- *-1 to remove from Mailchimp*: this still hasn't happened yet,
+- *=1* at the bottom shows we're expecting one subscriber once we're all done.
 
 And on the right side:
 
-- 1 at CiviCRM: the new subscriber you added has been added to the group (and added as a contact if they weren't already a contact).
+- *1 at CiviCRM*: the new subscriber you added has been added to the group (and added as a contact if they weren't already a contact).
 
 !!! question
     You're probably wondering why it's super fast from Mailchimp to CiviCRM while the other direction has to wait for syncs to run. This tutorial isn't the place to explain in detail, but basically the changes are usually smaller coming from Mailchimp to CiviCRM so it's feasible to handle them in this way.
 
-
+!!! success "Congratulations!"
+    You've completed this tutorial. If all has gone well, you've now got a fully functional two-way sync set up between your group and your audience. You may now want to look at the How To pages to plan implementing this on existing audiences/groups, learn how to use Interest Groups, or (if you're a developer) how to pump more data up to Mailchimp, like the person's current membership details.
 
 
