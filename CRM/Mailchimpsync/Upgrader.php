@@ -31,6 +31,7 @@ class CRM_Mailchimpsync_Upgrader extends CRM_Mailchimpsync_Upgrader_Base {
       // Create default config.
       $config = [
         'lists' => [],
+        'accounts' => [],
       ];
       CRM_Mailchimpsync::setConfig($config);
     }
