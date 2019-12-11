@@ -36,6 +36,7 @@ Developer use only: stops the sync processing before processing the given stage.
 - `readyToCleanUpDuplicates`
 - `readyToAddCiviOnly`
 - `readyToCheckForGroupChanges`
+- `readyToCheckForDataUpdates` (skipped if not a data sync)
 - `readyToReconcileQueue`
 - `readyToSubmitUpdates`
 
