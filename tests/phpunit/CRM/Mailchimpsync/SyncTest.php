@@ -213,34 +213,42 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $contact_1 = civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1'])['id'];
     $contact_2 = civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test2'])['id'];
 
-    // Create records.
+    // Create cache record for contact 1, with Mailchimp ID
     $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_member_id, mailchimp_list_id, civicrm_contact_id, mailchimp_email)
             VALUES(%1, 'list_1', %2, %3)";
-
     CRM_Core_DAO::executeQuery($sql, [
       1 => ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'String'],
       2 => [$contact_1, 'Integer'],
       3 => ['contact1@example.com', 'String'],
     ]);
-    CRM_Core_DAO::executeQuery($sql, [
-      1 => ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'String'],
-      2 => [$contact_2, 'Integer'],
-      3 => ['contact2@example.com', 'String'],
-    ]);
 
-    // Delete contact 2
+    // Create cache record for contact 2, without Mailchimp ID
+    $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id)
+            VALUES('list_1', %1)";
+    CRM_Core_DAO::executeQuery($sql, [ 1 => [$contact_1, 'Integer'] ]);
+
+    // Soft Delete contact 2
     civicrm_api3('Contact', 'delete', ['id' => $contact_2]);
 
     // Create simple config.
     $audience = $this->createConfigFixture1AndGetAudience();
 
+    // Do work we want to test:
     $affected = $audience->removeInvalidContactIds();
-    $this->assertEquals(1, $affected, "Expected removeInvalidContactIds to remove one deleted contact.");
+
+    // check expectations.
+    $this->assertEquals(1, $affected['updated'], "Expected removeInvalidContactIds to remove one deleted contact.");
+    $this->assertEquals(1, $affected['deleted'], "Expected removeInvalidContactIds to delete an empty cache row");
 
     // Fully delete contact 1
     civicrm_api3('Contact', 'delete', ['id' => $contact_1, 'skip_undelete'=>1]);
+    // Do work we want to test:
     $affected = $audience->removeInvalidContactIds();
-    $this->assertEquals(0, $affected, "Expected removeInvalidContactIds to remove one fully deleted contact.");
+
+    // check expectations
+    $this->assertEquals(1, $affected['updated'], "Expected removeInvalidContactIds to remove one fully deleted contact.");
+    $this->assertEquals(0, $affected['deleted'], "Expected removeInvalidContactIds not to delete any cache rows");
+
   }
   public function testContactsMatchedByEmail() {
     $default_stats = [

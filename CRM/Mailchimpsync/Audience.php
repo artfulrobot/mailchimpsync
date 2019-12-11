@@ -419,10 +419,15 @@ class CRM_Mailchimpsync_Audience
    *
    * e.g. if a contact is deleted (including a merge).
    *
-   * @return int Number of affected rows.
+   * @return array with keys:
+   * - updated: int Number of affected rows.
+   * - deleted: int number of cache records deleted.
    */
   public function removeInvalidContactIds() {
 
+    $sql_params = [1 => [$this->mailchimp_list_id, 'String']];
+
+    // Remove CiviCRM contact IDs that no longer point to live contacts.
     $sql = "
       UPDATE civicrm_mailchimpsync_cache mc
         LEFT JOIN civicrm_contact cc ON mc.civicrm_contact_id = cc.id AND cc.is_deleted = 0
@@ -431,11 +436,21 @@ class CRM_Mailchimpsync_Audience
              AND cc.id IS NULL
              AND mc.mailchimp_list_id = %1;";
 
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    $dao = CRM_Core_DAO::executeQuery($sql, $sql_params);
+    $results = ['updated' => $dao->affectedRows()];
 
-    $affected = $dao->affectedRows();
-    $this->log("removeInvalidContactIds: Removed $affected stale CiviCRM Contact IDs");
-    return $affected;
+    // This might have resulted in some empty cache records, i.e.
+    // No ContacID and no MailchimpID. We can safely delete these.
+    $dao = CRM_Core_DAO::executeQuery(
+      'DELETE FROM civicrm_mailchimpsync_cache
+       WHERE mailchimp_member_id IS NULL
+         AND civicrm_contact_id IS NULL
+         AND mc.mailchimp_list_id = %1;',
+      $sql_params);
+    $results['deleted'] = $dao->affectedRows();
+
+    $this->log("removeInvalidContactIds: Removed $results[updated] stale CiviCRM Contact IDs; Deleted $results[deleted] empty rows from mailchimpsync cache table.");
+    return $result;
   }
   /**
    * Try various techniques for finding an appropriate CiviCRM Contact ID from
