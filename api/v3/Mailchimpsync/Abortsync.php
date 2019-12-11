@@ -11,6 +11,7 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
  */
 function _civicrm_api3_mailchimpsync_Abortsync_spec(&$spec) {
   $spec['group_id']['description'] = 'Identify which audience/list to abort from given CiviCRM (subscription) group ID';
+  $spec['group_id']['api.required'] = TRUE;
 }
 
 /**

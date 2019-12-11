@@ -11,7 +11,7 @@ use CRM_Mailchimpsync_ExtensionUtil as E;
  */
 function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
   $spec['force_restart'] = [
-    'description' => E::ts('Force a restart. This is not a normal thing to do; results are unpredictable.'),
+    'description' => E::ts('Developer only: Force a restart. This is not a normal thing to do; results are unpredictable.'),
     'type'        => CRM_Utils_Type::T_BOOLEAN,
     'api.default' => FALSE,
   ];
@@ -26,6 +26,19 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
     'description' => E::ts('Fetch and reconcile contacts since this date time (or use "ever")'),
   ];
 	$spec['id']['api.aliases'] = ['group_id'];
+  $spec['stop_on'] = [
+    'description' => E::ts('Developer only: Stop processing at this stage.'),
+    'api.options' => [
+      'readyToFetch',
+      'readyToFixContactIds',
+      'readyToCreateNewContactsFromMailchimp',
+      'readyToCleanUpDuplicates',
+      'readyToAddCiviOnly',
+      'readyToCheckForGroupChanges',
+      'readyToReconcileQueue',
+      'readyToSubmitUpdates',
+    ]
+  ];
 }
 
 /**

@@ -87,7 +87,7 @@
     <type>varchar</type>
     <length>10</length>
     <default>'todo'</default>
-    <comment>ok|todo|live_sub|live_unsub|live_data|redo|fail</comment>
+    <comment>ok|todo|redo|fail</comment>
   </field>
 
   <index>

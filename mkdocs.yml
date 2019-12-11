@@ -8,10 +8,12 @@ pages:
 - How Tos:
     - 'How to sync an existing audience': howto/sync-existing.md
     - 'How to run a sync': howto/run-sync.md
-- Discussions: discussion/index.md
-- Reference: reference/index.md
-- Reference: reference/sync-detail.md
-- Quick Start: quick-start.md
+- Discussions:
+    - 'Mailchimp Issues': discussion/mailchimp-issues.md
+- Reference:
+    - 'API Reference': reference/api.md
+    - 'Table Reference': reference/tables.md
+    - 'Sync Details': reference/sync-detail.md
 
 markdown_extensions:
   - attr_list
