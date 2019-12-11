@@ -159,11 +159,11 @@ class CRM_Mailchimpsync_Audience
 
       case NULL:
       case 'readyToFetch':
-        $params = ['max_time' => $remaining_time];
+        $merge_mailchimp_params = ['max_time' => $remaining_time];
         if ($relevant_since !== FALSE) {
-          $params['since'] = $relevant_since;
+          $merge_mailchimp_params['since'] = $relevant_since;
         }
-        $this->mergeMailchimpData($params);
+        $this->mergeMailchimpData($merge_mailchimp_params);
         break;
 
       case 'readyToFixContactIds':
