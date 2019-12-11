@@ -445,12 +445,12 @@ class CRM_Mailchimpsync_Audience
       'DELETE FROM civicrm_mailchimpsync_cache
        WHERE mailchimp_member_id IS NULL
          AND civicrm_contact_id IS NULL
-         AND mc.mailchimp_list_id = %1;',
+         AND mailchimp_list_id = %1;',
       $sql_params);
     $results['deleted'] = $dao->affectedRows();
 
     $this->log("removeInvalidContactIds: Removed $results[updated] stale CiviCRM Contact IDs; Deleted $results[deleted] empty rows from mailchimpsync cache table.");
-    return $result;
+    return $results;
   }
   /**
    * Try various techniques for finding an appropriate CiviCRM Contact ID from

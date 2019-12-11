@@ -225,10 +225,11 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // Create cache record for contact 2, without Mailchimp ID
     $sql = "INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id)
             VALUES('list_1', %1)";
-    CRM_Core_DAO::executeQuery($sql, [ 1 => [$contact_1, 'Integer'] ]);
+    CRM_Core_DAO::executeQuery($sql, [ 1 => [$contact_2, 'Integer'] ]);
 
-    // Soft Delete contact 2
+    // Soft Delete contacts
     civicrm_api3('Contact', 'delete', ['id' => $contact_2]);
+    civicrm_api3('Contact', 'delete', ['id' => $contact_1]);
 
     // Create simple config.
     $audience = $this->createConfigFixture1AndGetAudience();
@@ -237,16 +238,20 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $affected = $audience->removeInvalidContactIds();
 
     // check expectations.
-    $this->assertEquals(1, $affected['updated'], "Expected removeInvalidContactIds to remove one deleted contact.");
+    $this->assertEquals(2, $affected['updated'], "Expected removeInvalidContactIds to remove two (soft) deleted contacts.");
     $this->assertEquals(1, $affected['deleted'], "Expected removeInvalidContactIds to delete an empty cache row");
 
-    // Fully delete contact 1
+    //
+    // This next bit is not really a test of the removeInvalidContactIds.
+    // It's here because once upon a time we did not use FKs and so this was needed.
+    // Now it's just left in for the note.
+    //
+    // Fully delete contact 1 - the FK should delete the cahce record for us.
     civicrm_api3('Contact', 'delete', ['id' => $contact_1, 'skip_undelete'=>1]);
     // Do work we want to test:
     $affected = $audience->removeInvalidContactIds();
-
     // check expectations
-    $this->assertEquals(1, $affected['updated'], "Expected removeInvalidContactIds to remove one fully deleted contact.");
+    $this->assertEquals(0, $affected['updated'], "Expected removeInvalidContactIds not to remove any contact_ids from the cache table.");
     $this->assertEquals(0, $affected['deleted'], "Expected removeInvalidContactIds not to delete any cache rows");
 
   }
