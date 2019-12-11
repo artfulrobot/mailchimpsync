@@ -857,6 +857,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
           'email_address' => 'contact1@example.com',
           'status' => 'subscribed',
           'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+          'last_changed' => date('YmdHis'),
         ]),
       ]]
     ]);
@@ -940,6 +941,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+            'last_changed' => date('YmdHis'),
           ]),
         ],
       ],
@@ -951,6 +953,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+            'last_changed' => date('YmdHis'),
           ]),
         ]
       ]
@@ -1035,6 +1038,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
             'email_address' => 'contact1@example.com',
             'status' => 'subscribed',
             'id' => $api->getMailchimpMemberIdFromEmail('contact1@example.com'),
+            'last_changed' => date('YmdHis'),
           ]),
         ],
       ],

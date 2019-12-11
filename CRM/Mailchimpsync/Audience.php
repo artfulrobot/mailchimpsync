@@ -677,6 +677,7 @@ class CRM_Mailchimpsync_Audience
       INSERT INTO civicrm_mailchimpsync_cache (mailchimp_list_id, civicrm_contact_id, sync_status)
         SELECT %1 mailchimp_list_id, contact_id, 'todo' sync_status
       FROM civicrm_group_contact gc
+      INNER JOIN civicrm_contact c ON gc.contact_id = c.id AND c.is_deleted = 0
       WHERE gc.group_id = $civicrm_subscription_group_id
             AND gc.status = 'Added'
             AND NOT EXISTS (
