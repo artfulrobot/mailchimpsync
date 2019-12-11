@@ -422,26 +422,24 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $this->assertEquals(1, $bao->count());
   }
   /**
-   * Check we have our special table that helps us with sync.
    */
-  public function xtestFetchCiviData() {
-    $result = civicrm_api3('Group', 'create', [
-      'name'       => "test_list_1",
-      'title'      => "test_list_1",
-      'group_type' => "Mailing List",
-    ]);
-    $mailing_group_id = $result['id'];
+  public function testAddCiviOnlyDoesNotAddDeleted() {
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
 
-    // Set up config so we know 'list_1' is supposed to be synced with this new group.
-    $config = CRM_Mailchimpsync::getConfig();
-    $config['lists']['list_1'] = [
-      'apiKey'            => 'mock_account_1',
-      'subscriptionGroup' => $mailing_group_id,
-    ];
+    // Contact 1, create and add into group.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
+    $contacts = [$contact_1];
+    CRM_Contact_BAO_GroupContact::addContactsToGroup($contacts, $audience->getSubscriptionGroup());
 
-    //$api->mergeCiviData([]);
+    // Delete the contact
+    civicrm_api3('Contact', 'delete', ['id' => $contact_1]);
+
+    // Do work.
+    $added = $audience->addCiviOnly();
+
+    // Check
+    $this->assertEquals(0, $added, "Should not add deleted contacts");
   }
-
   /**
    *
    * Various tests on reconciling the subscription group.

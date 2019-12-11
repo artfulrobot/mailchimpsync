@@ -7,9 +7,6 @@ trait CRM_Mailchimpsync_FixturesTrait {
    * @param return CRM_Mailchimpsync_Audience
    */
   protected function createConfigFixture1AndGetAudience($with_group = FALSE) {
-    // Clear out locks.
-    Civi::settings()->set("mailchimpsync_audience_status_list_1", NULL);
-
     if ($with_group) {
       $group_id = civicrm_api3('Group', 'create', [
         'name'       => "test_list_1",
