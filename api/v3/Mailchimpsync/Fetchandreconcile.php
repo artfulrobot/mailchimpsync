@@ -16,7 +16,8 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
     'api.default' => FALSE,
   ];
   $spec['group_id'] = [
-    'description' => E::ts('The CiviCRM Group used for tracking audience/list subscriptions. If not provided, process all groups/audiences.')
+    'description' => E::ts('The CiviCRM Group used for tracking audience/list subscriptions. If not provided, process all groups/audiences.'),
+    'api.aliases' => ['id'],
   ];
   $spec['max_time'] = [
     'description' => E::ts('New jobs will not be started after this many seconds have elapsed. Set to 0 for no limit (good for CLI-driven crons). Defaults to 5 mins.'),
@@ -25,7 +26,6 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
   $spec['since'] = [
     'description' => E::ts('Fetch and reconcile contacts since this date time (or use "ever")'),
   ];
-	$spec['id']['api.aliases'] = ['group_id'];
   $spec['stop_on'] = [
     'description' => E::ts('Developer only: Stop processing at this stage.'),
     'api.options' => [

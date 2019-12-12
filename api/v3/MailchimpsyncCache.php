@@ -51,7 +51,8 @@ function _civicrm_api3_mailchimpsync_cache_get_spec(&$spec) {
  * @throws API_Exception
  */
 function civicrm_api3_mailchimpsync_cache_get($params) {
-  $returnValues = _civicrm_api3_basic_get(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  $returnValues = CRM_Mailchimpsync_BAO_MailchimpsyncCache::apiSearch($params);
+  // $returnValues = _civicrm_api3_basic_get(_civicrm_api3_get_BAO(__FUNCTION__), $params);
 
   // Array of list IDs to contactIds.
   $contact_ids = [];

@@ -197,7 +197,7 @@ class CRM_Mailchimpsync
    * @param bool $reset
    * @param int $single_cache_entry_id If given, only update a single cache entry record.
    */
-  public static function updateGroupsInCacheTable($reset=FALSE, $single_cache_entry_id=NULL) {
+  public static function updateGroupsInCacheTable($reset=TRUE, $single_cache_entry_id=NULL) {
     if (!$single_cache_entry_id) {
       if (static::$updateGroupsInCacheTableHasRun && !$reset) {
         // Only do this once per session.
@@ -207,6 +207,7 @@ class CRM_Mailchimpsync
       $where = '';
     }
     else {
+      $single_cache_entry_id = (int) $single_cache_entry_id;
       $where = "WHERE c.id=$single_cache_entry_id";
     }
 

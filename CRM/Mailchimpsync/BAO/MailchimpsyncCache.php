@@ -78,4 +78,106 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
     $obj->find(TRUE);
     return $obj;
   }
+  /**
+   * MailchimpsyncCache.get
+   *
+   * @param array $params
+   * @return array
+   */
+  public static function apiSearch(array $params) {
+    $i=1;
+
+    if (empty($params['mailchimp_list_id'])) {
+      throw new \Exception("must provide mailchimp_list_id");
+    }
+    // Look up group ID for this list id.
+    $config = CRM_Mailchimpsync::getConfig();
+    $group_id = (int) $config['lists'][$params['mailchimp_list_id']]['subscriptionGroup'];
+    if (!$group_id) {
+      throw new \Exception("Invalid list id");
+    }
+
+    $sql_params = [1 => [$group_id, 'Integer']];
+    $i++;
+
+    $is_count = ($params['options']['is_count'] ?? FALSE);
+
+    if ($is_count) {
+      $sql = 'SELECT count(mc.id) FROM civicrm_mailchimpsync_cache mc';
+    }
+    else {
+      $sql = 'SELECT mc.*, h1.status FROM civicrm_mailchimpsync_cache mc';
+    }
+    $sql .= " LEFT JOIN civicrm_subscription_history h1 ON h1.contact_id = mc.civicrm_contact_id ";
+
+    $wheres = [];
+    $wheres[] = "group_id = %1";
+    $wheres[] =
+        "NOT EXISTS (
+          SELECT id FROM civicrm_subscription_history h2
+          WHERE h2.group_id = h1.group_id
+          AND h2.contact_id = h1.contact_id
+          AND h2.id > h1.id) ";
+
+    if (!empty($params['civicrm_status'])) {
+      $wheres[] = "h1.status = %$i";
+      $sql_params[$i] = [$params['civicrm_status'], 'String'];
+      $i++;
+    }
+
+    foreach (['sync_status', 'mailchimp_status', 'mailchimp_email', 'mailchimp_list_id', 'civicrm_contact_id'] as $field) {
+      if (isset($params[$field])) {
+        if (is_string($params[$field])) {
+          $wheres[] = "$field = %$i";
+          $sql_params[$i] = [$params[$field], 'String'];
+          $i++;
+        }
+        elseif (is_array($params[$field])) {
+          switch (array_keys($params[$field])[0] ?? NULL) {
+          case 'LIKE':
+            $wheres[] = "$field LIKE %$i";
+            $sql_params[$i] = ['%' . $params[$field]['LIKE'] . '%', 'String'];
+            $i++;
+            break;
+
+          default:
+            throw new Exception("unsupported query");
+          }
+        }
+        else {
+          throw new Exception("unsupported query");
+        }
+      }
+    }
+
+
+    // @todo civicrm_status
+
+    if ($wheres) {
+      $sql .= " WHERE (" . implode(') AND (', $wheres) . ")";
+    }
+
+    $sql .= " ORDER BY mc.id";
+
+    if ($is_count) {
+      $results = ['count' => CRM_Core_DAO::singleValueQuery($sql, $sql_params)];
+    }
+    else {
+      $limit = (int) ($params['options']['limit'] ?? 25);
+      $offset = (int) ($params['options']['offset'] ?? 0);
+      if ($limit) {
+        if ($offset) {
+          $sql .= " LIMIT $offset, $limit";
+        }
+        else {
+          $sql .= " LIMIT $limit";
+        }
+      }
+      $dao = CRM_Core_DAO::executeQuery($sql, $sql_params);
+      $results = $dao->fetchAll();
+      $results = ['values' => $results, 'count' => count($results)];
+    }
+
+    return $results;
+  }
 }

@@ -174,7 +174,10 @@ class CRM_Mailchimpsync_Audience
           'andLog' => 'Beginning to remove invalid contact IDs and populate missing ones from email matches.'
         ]);
         $this->removeInvalidContactIds();
-        $this->populateMissingContactIds();
+        $this->log("removeInvalidContactIds: beginning populateMissingContactIds");
+        $result = $this->populateMissingContactIds();
+        $this->log("removeInvalidContactIds: completed populateMissingContactIds: "
+          . json_encode($result));
         $this->updateLock([
           'for'    => 'fetchAndReconcile',
           'to'     => 'readyToCreateNewContactsFromMailchimp',
@@ -950,7 +953,6 @@ class CRM_Mailchimpsync_Audience
     try {
       $subs = $this->parseSubs($cache_entry->mailchimp_updated, $cache_entry->civicrm_groups);
       $final_state_is_subscribed = $this->reconcileSubscriptionGroup($mailchimp_updates, $cache_entry, $subs);
-
 
       if ($final_state_is_subscribed) {
         // This is not an unsubscribe request, so process other data, too.
