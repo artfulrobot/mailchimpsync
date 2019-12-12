@@ -375,7 +375,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // Populate - should find our contact.
     $stats = $audience->populateMissingContactIds();
     $this->assertEquals(['found_by_single_email' => 1] + $default_stats,
-      $stats, "Failed to populate contact from email (test 1)");
+      array_intersect_key($stats, $default_stats), "Failed to populate contact from email (test 1)");
     // Check it found the right contact.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
     $bao->mailchimp_email = 'contact1@example.com';
@@ -393,7 +393,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $this->assertEquals([
       'found_by_single_email' => 1,
       ] + $default_stats
-      , $stats, "Failed to populate contact from email (test 2)");
+      , array_intersect_key($stats, $default_stats), "Failed to populate contact from email (test 2)");
     // Check it found the right contact.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
     $bao->mailchimp_email = 'contact1@example.com';
@@ -407,7 +407,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     CRM_Contact_BAO_GroupContact::addContactsToGroup([$contact_1], $audience->getSubscriptionGroup());
     CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
     $stats = $audience->populateMissingContactIds();
-    $this->assertEquals(['used_first_undeleted_contact_in_group' => 1] + $default_stats, $stats,
+    $this->assertEquals(['used_first_undeleted_contact_in_group' => 1] + $default_stats, array_intersect_key($stats, $default_stats),
       "Expected to have found contact 1 because they were in the group whereas contact 2 was not.");
     // Check it found the right contact.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
@@ -422,7 +422,8 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     CRM_Contact_BAO_GroupContact::removeContactsFromGroup($contacts, $audience->getSubscriptionGroup(), 'Admin', 'Removed');
     CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL');
     $stats = $audience->populateMissingContactIds();
-    $this->assertEquals(['used_first_undeleted_contact_with_group_history' => 1] + $default_stats, $stats,
+    $this->assertEquals(['used_first_undeleted_contact_with_group_history' => 1] + $default_stats,
+      array_intersect_key($stats, $default_stats),
       "Expected to have found contact 1 because they have a subscription history.");
     // Check it found the right contact.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
@@ -440,7 +441,8 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     civicrm_api3('Contact', 'delete', ['id' => $contact_1, 'skip_undelete'=>1]);
     $contact_1 = (int) civicrm_api3('Contact', 'create', ['contact_type' => 'Individual', 'first_name' => 'test1', 'email' => 'contact1@example.com'])['id'];
     $stats = $audience->populateMissingContactIds();
-    $this->assertEquals(['used_first_undeleted_contact' => 1] + $default_stats, $stats,
+    $this->assertEquals(['used_first_undeleted_contact' => 1] + $default_stats,
+      array_intersect_key($stats, $default_stats),
       "Expected to have found first contact.");
     // Check it found the right contact.
     $bao = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
@@ -451,7 +453,8 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // Finally, a contact at mailchimp has an email we don't know.
     CRM_Core_DAO::executeQuery('UPDATE civicrm_mailchimpsync_cache SET civicrm_contact_id = NULL, mailchimp_email = "contact3@example.com";');
     $stats = $audience->populateMissingContactIds();
-    $this->assertEquals(['remaining' => 1] + $default_stats, $stats,
+    $this->assertEquals(['remaining' => 1] + $default_stats,
+      array_intersect_key($stats, $default_stats),
       "Expected to have one contact remaining");
 
   }

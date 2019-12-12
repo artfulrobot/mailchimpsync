@@ -10,6 +10,7 @@ pages:
     - 'How to run a sync': howto/run-sync.md
 - Discussions:
     - 'Mailchimp Issues': discussion/mailchimp-issues.md
+    - 'Optimisation': discussion/sql-optimisation.md
 - Reference:
     - 'API Reference': reference/api.md
     - 'Table Reference': reference/tables.md
