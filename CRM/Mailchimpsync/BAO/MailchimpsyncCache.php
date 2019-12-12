@@ -200,8 +200,8 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
 
     $v = $params['list_id'] ?? '';
     if ($v) {
-      $wheres[] = "c.list_id = %$i";
-      $sql_params[$i] = $v;
+      $wheres[] = "c.mailchimp_list_id = %$i";
+      $sql_params[$i] = [$v, 'String'];
       $i++;
     }
 
