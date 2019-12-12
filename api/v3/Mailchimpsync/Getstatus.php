@@ -29,7 +29,7 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
   $returnValues = [];
   $batches = [];
 
-  function prettifySeconds($age) {
+  $prettifySeconds = function ($age) {
     $unit = 's';
     $age = round($age, 1);
     if ($age > 60) {
@@ -42,7 +42,7 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
     }
     $unit = E::ts($unit);
     return number_format($age) . " $unit";
-  }
+  };
 
   if (!empty($params['batches'])) {
     $batches = CRM_Mailchimpsync::fetchBatches();
@@ -106,7 +106,7 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
           }
 
           if ($last_time) {
-            $_['took'] = prettifySeconds($last_time - $this_time);
+            $_['took'] = $prettifySeconds($last_time - $this_time);
           }
           $last_time = $this_time;
         }
@@ -128,7 +128,7 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
           $returnValues[$list_id]['crashed'] = FALSE;
         }
         else {
-          $age = prettifySeconds($age);
+          $age = $prettifySeconds($age);
           $returnValues[$list_id]['crashed'] = E::ts('The logs have not been updated for about %1 - this is an unusually long time.', [1 => $age]);
         }
       }

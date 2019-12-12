@@ -47,4 +47,22 @@ WHERE mc.civicrm_contact_id IS NULL
   AND mc.mailchimp_list_id = %1";
 ```
 
-and dropping a table using `DROP TEMPORARY` does not cause the transaction to commit.
+and dropping a table using `DROP TEMPORARY` does not cause the transaction
+to commit. 
+
+This (the final strategy) was also very slow - 7s
+
+```sql
+UPDATE civicrm_mailchimpsync_cache mc
+  INNER JOIN (
+    SELECT e.email, MIN(e.contact_id) contact_id
+      FROM civicrm_email e
+      INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+    GROUP BY e.email
+  ) c ON c.email = mc.mailchimp_email
+  SET mc.civicrm_contact_id = c.contact_id
+  WHERE mc.civicrm_contact_id IS NULL
+        AND c.contact_id IS NOT NULL
+        AND mc.mailchimp_list_id = %1
+```
+
