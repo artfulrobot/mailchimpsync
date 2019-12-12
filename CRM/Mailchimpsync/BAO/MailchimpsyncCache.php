@@ -1,7 +1,6 @@
 <?php
 use CRM_Mailchimpsync_ExtensionUtil as E;
 
-// @todo maybe log all changesinto a table? would need periodic clean out.
 class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_MailchimpsyncCache {
 
   /**
@@ -90,6 +89,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
     if (empty($params['mailchimp_list_id'])) {
       throw new \Exception("must provide mailchimp_list_id");
     }
+
     // Look up group ID for this list id.
     $config = CRM_Mailchimpsync::getConfig();
     $group_id = (int) $config['lists'][$params['mailchimp_list_id']]['subscriptionGroup'];

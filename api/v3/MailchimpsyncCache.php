@@ -61,8 +61,12 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
     $group_ids = CRM_Mailchimpsync::getAllGroupIds();
     if ($contact_ids && $group_ids) {
       /*
+        // 2019-11-01
       // At first I thought this should be live, but actually it makes more sense for us
       // to show whateever is in the cache.
+        // 2019-12-12
+      // I'm not clear any more on this thinking. Live seems better and it's how the getStats works, too.
+      // ? could we call updateCiviCRMGroups for these records now? NO, must not change data in a get request.
 
       $group_ids = implode(',', $group_ids);
       $contact_ids = implode(',', $contact_ids);
@@ -107,6 +111,9 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
             foreach ($fails as $fail) {
               $fail = json_decode($fail);
               $row['errors'] .= "{$fail->title}: {$fail->detail}";
+              if ($fail->title == 'Member Exists') {
+                $row['errors'] .= ' ' .E::ts( "One cause of 'Member Exists' errors is that you have two separate contacts in CiviCRM for the same email, which leads to an impossible sync situation (because feasibly you could subscribe one contact and unsubscribe the other!). You should check and merge contacts if you find duplicates." );
+              }
             }
           }
           else {
