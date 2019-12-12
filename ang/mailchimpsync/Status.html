@@ -144,11 +144,10 @@
         <form name="mcs-cache-filters" crm-ui-id-scope>
 
           <div class="mcs-cache-filter">
-          <label crm-ui-for="cache.mailchimp_list_id" >Audience</label>
+          <label crm-ui-for="cache.mailchimp_list_id" >Audience (required)</label>
           <select crm-ui-id="cache.mailchimp_list_id"
             ng-model="cacheParams.mailchimp_list_id"
             >
-            <option value="">Any</option>
             <option ng-repeat="(i, l) in mcsConfig.lists" value="{{i}}">
               {{ mcsConfig.accounts[l.apiKey].audiences[i].name }}
             </option>
@@ -185,7 +184,7 @@
           </div>
 
           <div class="mcs-cache-filter">
-          <label crm-ui-for="cache.civicrm_status" >CiviCRM status</label>
+          <label crm-ui-for="cache.civicrm_status" >Current CiviCRM status</label>
           <select crm-ui-id="cache.civicrm_status"
             ng-model="cacheParams.civicrm_status"
             >
