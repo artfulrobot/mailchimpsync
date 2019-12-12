@@ -810,7 +810,8 @@ class CRM_Mailchimpsync_Audience
     $affected = $dao->affectedRows();
 
     // Update cache of groups.
-    CRM_Mailchimpsync::updateGroupsInCacheTable();
+    CRM_Mailchimpsync_BAO_MailchimpsyncCache::updateCiviCRMGroups(
+      ['list_id' => $this->mailchimp_list_id]);
 
     $this->updateLock([
       'for'    => 'fetchAndReconcile',
@@ -1339,7 +1340,8 @@ class CRM_Mailchimpsync_Audience
       }
     }
 
-    CRM_Mailchimpsync::updateGroupsInCacheTable(FALSE, $cache_entry->id);
+    CRM_Mailchimpsync_BAO_MailchimpsyncCache::updateCiviCRMGroups(
+      ['id' => $cache_entry->id]);
     $cache_entry = $cache_entry->reloadNewObjectFromDb();
 
     $complete = FALSE;

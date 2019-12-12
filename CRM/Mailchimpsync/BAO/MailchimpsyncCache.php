@@ -180,4 +180,67 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
 
     return $results;
   }
+  /**
+   * Update the 'civicrm_groups' field in our cache table.
+   *
+   * @param array $params. Optional keys describe filters for records to update:
+   * - id: only update this cache item.
+   * - list_id: only update cache items for this list.
+   */
+  public static function updateCiviCRMGroups($params = []) {
+
+    $wheres = [];
+    $sql_params = [];
+    $i = 1;
+
+    $v = (int) ($params['id'] ?? 0);
+    if ($v > 0) {
+      $wheres[] = "c.id = $v";
+    }
+
+    $v = $params['list_id'] ?? '';
+    if ($v) {
+      $wheres[] = "c.list_id = %$i";
+      $sql_params[$i] = $v;
+      $i++;
+    }
+
+    $wheres = $wheres ? 'WHERE ' . implode(' AND ', $wheres) : '';
+
+    // Get array of groups we care about
+    $group_ids = CRM_Mailchimpsync::getAllGroupIds();
+    if ($group_ids) {
+      $group_ids_clause = "group_id IN (" . implode(',', $group_ids) . ')';
+    }
+    else {
+      // In the case that there's no groups (e.g. just set up), this field should be empty.
+      $group_ids_clause = '0';
+    }
+
+    // Increase the max length for group concat.
+    // Nb. the following line is supposed to be the same, it's unclear to me when you would choose one or the other.
+    // CRM_Core_DAO::executeQuery("SET @@SESSION.group_concat_max_len = 1000000;");
+    CRM_Core_DAO::executeQuery("SET SESSION group_concat_max_len = 1000000;");
+
+    $sql = "
+        UPDATE civicrm_mailchimpsync_cache c
+        LEFT JOIN (
+          SELECT contact_id, GROUP_CONCAT(CONCAT_WS(';', group_id, status, date) SEPARATOR '|') subs
+          FROM civicrm_subscription_history h1
+          WHERE
+            $group_ids_clause
+            AND contact_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT id FROM civicrm_subscription_history h2
+              WHERE h2.group_id = h1.group_id
+              AND h2.contact_id = h1.contact_id
+              AND h2.id > h1.id)
+          GROUP BY contact_id
+        ) AS subs_results ON c.civicrm_contact_id = subs_results.contact_id
+        SET c.civicrm_groups = subs_results.subs
+        $wheres
+      ";
+    CRM_Core_DAO::executeQuery($sql, $sql_params);
+  }
+
 }
