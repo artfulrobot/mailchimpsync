@@ -4,11 +4,12 @@
 // database as appropriate. For more details, see "hook_civicrm_managed" at:
 // http://wiki.civicrm.org/confluence/display/CRMDOC42/Hook+Reference
 return array (
-  0 => 
+  0 =>
   array (
     'name' => 'Cron:Mailchimpsync.Fetchandreconcile',
     'entity' => 'Job',
-    'params' => 
+    'update' => 'never',
+    'params' =>
     array (
       'version' => 3,
       'name' => 'Call Mailchimpsync.Fetchandreconcile API',

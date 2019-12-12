@@ -98,8 +98,14 @@ The Mailchimp API key.
 - `add_batch_webhook`
 - `delete_batch_webhook`
 - `add_webhook`
-- `delete_webhook'
+- `delete_webhook`
 
 ### `id` (string)
 
 Used for the delete processes only. The Mailchimp webhook ID to delete.
+
+## MailchimpsyncCache entity
+
+This is a CiviCRM entity, however the `get` action is overridden so that we can report on and search for related `civicrm_group_contact` data using the `civicrm_status` = `Added|Removed` parameter.
+
+There is also a `troubleshoot` parameter - set this to 1 to include related data that is relatively expensive to compute. This is used by the Cache Browser on the sttaus page.

@@ -65,6 +65,38 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
     if (!empty($returnValues[$list_id]['lastSyncTime'])) {
       $returnValues[$list_id]['lastSyncTimeHuman'] = date('H:i:s d M Y', strtotime($returnValues[$list_id]['lastSyncTime']));
     }
+
+    // Check for crashes.
+    $returnValues[$list_id]['crashed'] = FALSE;
+    if (!(($returnValues[$list_id]['locks']['fetchAndReconcile'] ?? 'readyToFetch') === 'readyToFetch')) {
+      // The sync process is not in ready state.
+      $returnValues[$list_id]['crashed'] = E::ts('Possibly crashed? no logs but not in ready state.');
+
+      if (!empty($returnValues[$list_id]['log'])) {
+        $logs = $returnValues[$list_id]['log'];
+        $last_log_entry = NULL;
+        $i = count($logs) - 1;
+        do {
+          if (!preg_match('/^Called but locks say process already busy./', $logs[$i]['message'])) {
+            $last_log_entry = $logs[$i];
+            break;
+          }
+          $i--;
+        } while ($i > -1);
+        if ($last_log_entry) {
+          $age = time() - strtotime($last_log_entry['time']);
+          if ($age > 60*30) {
+            $age = round($age / 60);
+            $unit = E::ts("mins");
+            if ($age > 60) {
+              $age = round($age/60);
+              $unit = E::ts("hours");
+            }
+            $returnValues[$list_id]['crashed'] = E::ts('The logs have not been updated for about %1 - this is an unusually long time.', [1 => "$age $unit"]);
+          }
+        }
+      }
+    }
   }
 
   return civicrm_api3_create_success($returnValues, $params, 'Mailchimpsync', 'Getstatus');
