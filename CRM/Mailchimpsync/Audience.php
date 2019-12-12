@@ -197,7 +197,7 @@ class CRM_Mailchimpsync_Audience
         $this->log("removeInvalidContactIds: beginning populateMissingContactIds");
         $result = $this->populateMissingContactIds();
         $this->log("removeInvalidContactIds: completed populateMissingContactIds: "
-          . json_encode($result));
+          . json_encode($result, JSON_PRETTY_PRINT));
         $this->updateLock([
           'for'    => 'fetchAndReconcile',
           'to'     => 'readyToCreateNewContactsFromMailchimp',
@@ -942,11 +942,17 @@ class CRM_Mailchimpsync_Audience
 
     $stats = ['done' => $done, 'count' => count($cache_id_to_subs)];
 
+    // For logs information, look up number of updates pending.
+    $dao = new CRM_Mailchimpsync_DAO_MailchimpsyncUpdate();
+    $dao->mailchimp_list_id = $this->mailchimp_list_id;
+    $dao->completed = 0;
+    $mailchimp_updates = (int) $dao->count();
+
     if ($stats['done'] == $stats['count']) {
       $this->updateLock([
         'for'    => 'fetchAndReconcile',
         'to'     => 'readyToSubmitUpdates',
-        'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts.",
+        'andLog' => "reconcileQueueProcess: Completed reconciliation of $stats[done] contacts. (Need to submit $mailchimp_updates updates to Mailchimp)",
         'andAlso' => function(&$c) { unset($c['fetch']['since']); }
       ]);
     }
@@ -954,7 +960,7 @@ class CRM_Mailchimpsync_Audience
       $this->updateLock([
         'for'    => 'fetchAndReconcile',
         'to'     => 'readyToReconcileQueue', // reset for next time.
-        'andLog' => "reconcileQueueProcess: Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time.",
+        'andLog' => "reconcileQueueProcess: Reconciled $stats[done], " . ($stats['count'] - $stats[done]) . " remaining but ran out of time. So far, $mailchimp_updates updates to Mailchimp in the queue.",
       ]);
     }
     return $stats;

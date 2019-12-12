@@ -125,10 +125,12 @@
 
       <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
         <table>
-          <thead><tr><th style="width:12em">Date</th><th>Message</th></tr></thead>
+          <thead><tr><th style="width:12em">Date</th><th>Message</th><th>Took</th></tr></thead>
           <tbody>
             <tr ng-repeat="row in mcsStatus[selectedListId].log">
-              <td>{{row.time}}</td><td>{{row.message}}</td>
+              <td>{{row.time}}</td>
+              <td>{{row.message}}</td>
+              <td>{{row.took}}</td>
             </tr>
           </tbody>
         </table>
