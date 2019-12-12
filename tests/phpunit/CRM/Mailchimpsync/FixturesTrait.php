@@ -4,37 +4,60 @@ trait CRM_Mailchimpsync_FixturesTrait {
   /**
    * Set up one list in one account linked to one group.
    *
-   * @param return CRM_Mailchimpsync_Audience
+   * @param bool $with_group - whether to create a subscription group for this.
+   *
+   * @return array of CRM_Mailchimpsync_Audience objects, indexed from 1
    */
   protected function createConfigFixture1AndGetAudience($with_group = FALSE) {
-    if ($with_group) {
-      $group_id = civicrm_api3('Group', 'create', [
-        'name'       => "test_list_1",
-        'title'      => "test_list_1",
-        'group_type' => "Mailing List",
-      ])['id'];
-    }
-    else {
-      $group_id = NULL;
-    }
-    CRM_Mailchimpsync::setConfig([
-      'lists' => [
-        'list_1' => [
-          'apiKey' => 'mock_account_1',
-          'subscriptionGroup' => $group_id,
-        ],
-      ],
+    return $this->createConfigFixtureAndGetAudience(1, $with_group)[1];
+  }
+  /**
+   * Set up two lists in one account linked to one group.
+   *
+   * @param int $n number of lists to create
+   * @param bool $with_group - whether to create a subscription group for this.
+   *
+   * @return array of CRM_Mailchimpsync_Audience objects, indexed from 1
+   */
+  protected function createConfigFixtureAndGetAudience($n=1, $with_group = FALSE) {
+
+    $config = [
+      'lists' => [],
       'accounts' => [
         'mock_account_1' => [
-          'audiences' => [
-            'list_1' => [ ]
-          ],
+          'audiences' => [ ],
           'batchWebhookSecret' => 'MockBatchWebhookSecret',
         ]
       ]
-    ]);
-    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
-    return $audience;
+    ];
+
+    for($i=1; $i<=$n; $i++) {
+      $config['accounts']['mock_account_1']['audiences']["list_$i"] = [];
+
+      if ($with_group) {
+        $group_id = civicrm_api3('Group', 'create', [
+          'name'       => "test_list_$i",
+          'title'      => "test_list_$i",
+          'group_type' => "Mailing List",
+        ])['id'];
+      }
+      else {
+        $group_id = NULL;
+      }
+
+      $config['lists']["list_$i"] = [
+          'apiKey'            => 'mock_account_1',
+          'subscriptionGroup' => $group_id,
+      ];
+    }
+
+    CRM_Mailchimpsync::setConfig($config);
+
+    $audiences = [];
+    for($i=1; $i<=$n; $i++) {
+      $audiences[$i] = CRM_Mailchimpsync_Audience::newFromListId("list_$i");
+    }
+    return $audiences;
   }
   public function assertExpectedCacheStats($expected) {
     // Fetch stats.

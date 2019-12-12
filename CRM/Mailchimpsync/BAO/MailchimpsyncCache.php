@@ -189,26 +189,33 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
    */
   public static function updateCiviCRMGroups($params = []) {
 
+    // By default we will loook up the group status of any group that we have
+    // any sort of sync connection with, but when called for a particular audience
+    // we limit this (see below).
+    $group_ids = CRM_Mailchimpsync::getAllGroupIds();
+
     $wheres = [];
     $sql_params = [];
     $i = 1;
 
+    // Handle case where we're just updting a single contact.
     $v = (int) ($params['id'] ?? 0);
     if ($v > 0) {
       $wheres[] = "c.id = $v";
     }
 
-    $v = $params['list_id'] ?? '';
-    if ($v) {
+    // Handle (normal) case where we're updating a specific list.
+    if (isset($params['list_id'])) {
+      // List ID given.
+      $audience = CRM_Mailchimpsync_Audience::newFromListId($params['list_id']);
+      $group_ids = $audience->getGroupIds();
       $wheres[] = "c.mailchimp_list_id = %$i";
-      $sql_params[$i] = [$v, 'String'];
+      $sql_params[$i] = [$params['list_id'], 'String'];
       $i++;
     }
 
     $wheres = $wheres ? 'WHERE ' . implode(' AND ', $wheres) : '';
 
-    // Get array of groups we care about
-    $group_ids = CRM_Mailchimpsync::getAllGroupIds();
     if ($group_ids) {
       $group_ids_clause = "group_id IN (" . implode(',', $group_ids) . ')';
     }

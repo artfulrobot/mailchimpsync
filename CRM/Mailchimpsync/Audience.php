@@ -16,17 +16,37 @@ class CRM_Mailchimpsync_Audience
   /** Cached mailchimpsync_audience_status_* value */
   protected $status_cache;
 
+  /**
+   * Create an Audience object.
+   *
+   * Nb. you can call this with a list that is not yet configured. To know
+   * you're fetching a configured audience, use newFromListId()
+   *
+   * @param string $list_id
+   */
   protected function __construct(string $list_id) {
+    if (!preg_match('/^[0-9a-zA-Z_]+$/', $list_id)) {
+      throw new \InvalidArgumentException("Invalid Mailchimp list id: '$list_id'");
+    }
+    $config = CRM_Mailchimpsync::getConfig();
     $this->mailchimp_list_id = $list_id;
-
-    $this->config = CRM_Mailchimpsync::getConfig()['lists'][$list_id]
+    $this->config = $config['lists'][$list_id]
       ?? [
         'subscriptionGroup' => 0,
         'api_key' => NULL,
       ];
   }
 
+  /**
+   * Constructor wrapper that checks we have the list ID.
+   */
   public static function newFromListId($list_id) {
+    $config = CRM_Mailchimpsync::getConfig();
+
+    if (!isset($config['lists'][$list_id])) {
+      throw new \InvalidArgumentException("List '$list_id' is not configured.");
+    }
+
     $obj = new static($list_id);
     return $obj;
   }
@@ -1724,7 +1744,7 @@ class CRM_Mailchimpsync_Audience
   /**
    * Look up all the 2 way sync groups.
    *
-   * @return array
+   * @return array of integers (SQL safe)
    */
   public function getGroupIds() {
 

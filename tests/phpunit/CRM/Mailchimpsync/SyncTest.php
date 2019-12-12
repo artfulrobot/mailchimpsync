@@ -165,15 +165,17 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
   }
 
   /**
-   * Check merge does not run if there's a lock in place.
+   * Check fetchAndReconcile does not run if there's a lock in place for that
+   * list; check that for other lists it still works.
    */
   public function testMergeMailchimpDataDoesNotRunIfLocked() {
 
     // Create simple config.
-    $audience = $this->createConfigFixture1AndGetAudience();
+    $audiences = $this->createConfigFixtureAndGetAudience(2, TRUE);
 
-    // Get the audience's API so we can provide fixture data.
-    $api = $audience->getMailchimpApi();
+    // Get the audience's API so we can provide fixture data. (it's the same
+    // account, so we can use either audience)
+    $api = $audiences[1]->getMailchimpApi();
     $api->setMockMailchimpData([
       'list_1' => [
         'members' => [
@@ -183,24 +185,116 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
           [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
         ],
       ],
+      'list_2' => [
+        'members' => [
+          [ 'fname' => 'Bam Bam', 'lname' => 'Flintstone', 'email' => 'bambam@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
     ]);
 
-    // Get audience for this list.
-    $audience = CRM_Mailchimpsync_Audience::newFromListId('list_1');
-
-
-    // Put a 'busy' lock in place.
-    $this->assertTrue($audience->attemptToObtainLock([
+    // Put a 'busy' lock in place for list 1
+    $this->assertTrue($audiences[1]->attemptToObtainLock([
       'for' => 'fetchAndReconcile',
       'to'  => 'busy',
       'if'  => 'readyToFetch',
     ]), "Expected to be able to obtain a lock.");
 
     // Simulate a 2nd async process
-    $audience->fetchAndReconcile([]);
-    $status = $audience->getStatus();
+    $audiences[1]->fetchAndReconcile([]);
+    $status = $audiences[1]->getStatus();
     $this->assertEquals('Called but locks say process already busy. Will not do anything.', $status['log'][0]['message'] ?? '');
     $this->assertEquals('busy', $status['locks']['fetchAndReconcile']);
+
+
+    // Now do a fetch and reconcile on list 2 - this should NOT be blocked.
+    $audiences[2]->fetchAndReconcile([]);
+    $status = $audiences[2]->getStatus();
+    $this->assertEquals('fetchAndReconcile process is complete.', end($status['log'])['message'] ?? '');
+    $this->assertEquals('readyToFetch', $status['locks']['fetchAndReconcile']);
+
+  }
+
+  /**
+   * Sanity test: check that sync on one list does not affect another.
+   */
+  public function testAudienceIsolation() {
+
+    // Create simple config.
+    $audiences = $this->createConfigFixtureAndGetAudience(2, TRUE);
+
+    // Get the audience's API so we can provide fixture data. (it's the same
+    // account, so we can use either audience)
+    $api = $audiences[1]->getMailchimpApi();
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+      'list_2' => [
+        'members' => [
+          [ 'fname' => 'Bam Bam', 'lname' => 'Flintstone', 'email' => 'bambam@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+
+    $audience1hash = $this->getAudienceHash($audiences[1]);
+    $audience2hash = $this->getAudienceHash($audiences[2]);
+
+    // Reconile list 1
+    $audiences[1]->fetchAndReconcile([]);
+    // Check it changed (really a test that we're hashing the right things)
+    $this->assertNotEquals($audience1hash, $this->getAudienceHash($audiences[1]));
+    // Check list 2 unchanged.
+    $this->assertEquals($audience2hash, $this->getAudienceHash($audiences[2]));
+
+    // Take new hash of audience 1
+    $audience1hash = $this->getAudienceHash($audiences[1]);
+    $audiences[2]->fetchAndReconcile([]);
+    // Check it changed (really a test that we're hashing the right things)
+    $this->assertNotEquals($audience2hash, $this->getAudienceHash($audiences[1]));
+    // Check list 1 unchanged.
+    $this->assertEquals($audience1hash, $this->getAudienceHash($audiences[1]));
+
+    // Now reverse the list contents at Mailchimp - so a sync would now alter contacts previously on the other lists.
+    // Of course, this should not make any difference, but this is a sanity check test.
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Bam Bam', 'lname' => 'Flintstone', 'email' => 'bambam@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+      'list_2' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'wilma@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Betty', 'lname' => 'Rubble', 'email' => 'betty@example.com', 'status' => 'subscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Barney', 'lname' => 'Rubble', 'email' => 'barney@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+          [ 'fname' => 'Pebbles', 'lname' => 'Flintstone', 'email' => 'pebbles@example.com', 'status' => 'transactional', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+
+    $audience1hash = $this->getAudienceHash($audiences[1]);
+    $audience2hash = $this->getAudienceHash($audiences[2]);
+
+    // Reconile list 1
+    $audiences[1]->fetchAndReconcile([]);
+    // Check it changed (really a test that we're hashing the right things)
+    $this->assertNotEquals($audience1hash, $this->getAudienceHash($audiences[1]));
+    // Check list 2 unchanged.
+    $this->assertEquals($audience2hash, $this->getAudienceHash($audiences[2]));
+
+    // Take new hash of audience 1
+    $audience1hash = $this->getAudienceHash($audiences[1]);
+    $audiences[2]->fetchAndReconcile([]);
+    // Check it changed (really a test that we're hashing the right things)
+    $this->assertNotEquals($audience2hash, $this->getAudienceHash($audiences[1]));
+    // Check list 1 unchanged.
+    $this->assertEquals($audience1hash, $this->getAudienceHash($audiences[1]));
+
   }
 
   /**
@@ -1440,5 +1534,14 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
   public function assertContactIsNotInGroup($contact_id, $group_id) {
     $r = civicrm_api3('Contact', 'get', ['contact_id' => $contact_id, 'group' => $group_id]);
     $this->assertEquals(0, $r['count'], "Expected that contact was not in group, but is.");
+  }
+  /**
+   * Get lots of stats info on an audience and return a hash.
+   *
+   * This is used in the isolation test.
+   */
+  public function getAudienceHash($audience) {
+    $hash = md5(json_encode([$audience->getConfig(), $audience->getStatus(), $audience->getStats()]));
+    return $hash;
   }
 }
