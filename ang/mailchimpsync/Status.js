@@ -79,6 +79,11 @@
     };
     $scope.getDetailedUpdate();
 
+    $scope.showOverview = function showOverview() {
+      $scope.view = 'overview';
+      $scope.selectedListId = null;
+      $scope.selectedList = null;
+    }
     $scope.showDetails = function showDetails(listId) {
       $scope.view = 'detail';
       $scope.selectedListId = listId;

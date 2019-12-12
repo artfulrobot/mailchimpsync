@@ -10,7 +10,7 @@
 
   <p>
     <button ng-click="getDetailedUpdate()" nf-disabled="isLoading" >{{ isLoading ? 'Loading' : 'Refresh'}}</button>
-    &nbsp; <a href ng-show="view !== 'overview'" ng-click="view='overview'" >Back to overview</a>
+    &nbsp; <a href ng-show="view !== 'overview'" ng-click="showOverview()" >Back to overview</a>
     &nbsp; <a href ng-show="view !== 'detail' && selectedListId" ng-click="view='detail'" >Back to {{mailingGroups[selectedList.subscriptionGroup].title}}</a>
     &nbsp; <a href ng-show="view !== 'cache'" ng-click="cacheView()" >Browse Cache</a>
   </p>
@@ -124,12 +124,12 @@
       </p>
 
       <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
-        <table>
+        <table class="mcsStatus__log">
           <thead><tr><th style="width:12em">Date</th><th>Message</th><th>Took</th></tr></thead>
           <tbody>
             <tr ng-repeat="row in mcsStatus[selectedListId].log">
               <td>{{row.time}}</td>
-              <td>{{row.message}}</td>
+              <td style="white-space: pre-wrap">{{row.message}}</td>
               <td>{{row.took}}</td>
             </tr>
           </tbody>
