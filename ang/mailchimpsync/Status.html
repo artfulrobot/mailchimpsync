@@ -34,9 +34,10 @@
       <div crm-ui-debug="selectedListId"></div>
 
       <h2>{{ mailingGroups[selectedList.subscriptionGroup].title }}</h2>
-      <p>Sync CiviCRM <a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}">group</a>
-      with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
-      <p>Last sync: <em>{{ mcsStatus[selectedListId].lastSyncTimeHuman }}</em></p>
+      <p>Sync CiviCRM <a href="{{ crmUrl('civicrm/group/search', {reset:1, force:1, gid: selectedList.subscriptionGroup}) }}">group <code>#{{ selectedList.subscriptionGroup }}</code></a>
+        with Mailchimp audience: <strong>{{ mcsConfig.accounts[selectedList.apiKey].audiences[selectedListId].name }}</strong> <code>[{{selectedListId}}]</code> on account <em>{{ mcsConfig.accounts[selectedList.apiKey].account_name }}</em></p>
+      <p>Last sync completed at: <em>{{ mcsStatus[selectedListId].lastSyncTimeHuman }}</em></p>
+      <p ng-if="mcsStatus[selectedListId].crashed" ><span class="mcs-status-pill bad">Possible Crash</span> {{ mcsStatus[selectedListId].crashed }}</p>
       <div>
         {{ listStats=mcsStatus[selectedListId].stats; "" }}
 
@@ -124,10 +125,12 @@
 
       <div crm-ui-accordion="{title: ts('Logs'), collapsed: true}" title="Logs">
         <table>
-          <thead><tr><th style="width:12em">Date</th><th>Message</th></tr></thead>
+          <thead><tr><th style="width:12em">Date</th><th>Message</th><th>Took</th></tr></thead>
           <tbody>
             <tr ng-repeat="row in mcsStatus[selectedListId].log">
-              <td>{{row.time}}</td><td>{{row.message}}</td>
+              <td>{{row.time}}</td>
+              <td>{{row.message}}</td>
+              <td>{{row.took}}</td>
             </tr>
           </tbody>
         </table>
