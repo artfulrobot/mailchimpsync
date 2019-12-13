@@ -1117,13 +1117,16 @@ class CRM_Mailchimpsync_Audience
       // subscription history.
 
       if ($civicrm_subscription['status'] === 'Added') {
+        // M:? C:Added
 
         if ($cache_entry->isSubscribedAtMailchimp()) {
+          // M:subscribed, C:Added
           // Subscribed (could be Pending at MC) at both ends.
           // No subscription group level changes needed.
           return TRUE;
         }
         else {
+          // M:!subscribed, C:Added
           // Mailchimp has unsubscribed/cleaned/archived this contact
           // (or, converted it to transactional - not sure if that happens)
           // So we need to remove this contact from the subscription group.
@@ -1132,12 +1135,15 @@ class CRM_Mailchimpsync_Audience
         }
       }
       else {
+        // M:?, C:!Added
         // Removed, Deleted, or no subscription history in CiviCRM
         if ($cache_entry->isSubscribedAtMailchimp()) {
+          // M:subscribed, C:!Added
           $cache_entry->subscribeInCiviCRM($this);
           return TRUE;
         }
         else {
+          // M:!subscribed, C:!Added
           // Not subscribed at MC and not in CiviCRM's either: subscription is in sync.
           return FALSE;
         }
@@ -1148,19 +1154,25 @@ class CRM_Mailchimpsync_Audience
       // in terms of its subscription group.
       if ($civicrm_subscription['status'] === 'Added') {
         if ($cache_entry->isSubscribedAtMailchimp()) {
+          // C:Added, M:subscribed
           // in sync.
           return TRUE;
         }
         else {
+          // C:Added, M:?
           switch ($cache_entry->mailchimp_status) {
           case null:
             // Find best email to use to subscribe this contact.
             $mailchimp_updates['email_address'] = $this->getBestEmailForNewContact($cache_entry->civicrm_contact_id);
-            // deliberate fall through..
+            $mailchimp_updates['status'] = 'subscribed';
+            return TRUE;
 
           case 'unsubscribed':
           case 'archived':
           case 'transactional':
+            if ($cache_entry->mailchimpEmailIsOnHoldInCivi()) {
+              throw new CRM_Mailchimpsync_CannotSyncException("Contact's email adderss is on hold in CiviCRM; refusing to resubscribe at Mailchimp.");
+            }
             $mailchimp_updates['status'] = 'subscribed';
             return TRUE;
             break;
@@ -1168,7 +1180,7 @@ class CRM_Mailchimpsync_Audience
           case 'cleaned':
           default:
           // We will not be able to subscribe this person.
-          throw new CRM_Mailchimpsync_CannotSyncException("Contact 'cleaned' by mailchimp");
+          throw new CRM_Mailchimpsync_CannotSyncException("Contact 'cleaned' by mailchimp; cannot resubscribe.");
             break;
           }
         }

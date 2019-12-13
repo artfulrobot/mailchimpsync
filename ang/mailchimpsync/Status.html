@@ -51,8 +51,8 @@
           <tbody>
             <tr>
               <td>
-                <code>- </code>{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp<br />
-                <code>+ </code>{{ listStats.to_add_to_mailchimp }} to add to mailchimp<br />
+                <code>- </code><a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'live', civicrm_status:'Removed'})">{{ listStats.to_remove_from_mailchimp }} to remove from mailchimp</a><br />
+                <code>+ </code><a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'live', civicrm_status:'Added'})">{{ listStats.to_add_to_mailchimp }} to add to mailchimp</a><br />
               </td>
               <td>
                 <code>- </code>{{ listStats.cannot_subscribe }} <a href ng-click="cacheView({mailchimp_list_id: selectedListId, sync_status: 'fail'})">cannot subscribe.</a><br />

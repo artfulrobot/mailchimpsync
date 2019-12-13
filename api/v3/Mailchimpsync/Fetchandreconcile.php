@@ -36,6 +36,7 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
       'readyToAddCiviOnly',
       'readyToCheckForGroupChanges',
       'readyToReconcileQueue',
+      'readyToCheckForDataUpdates',
       'readyToSubmitUpdates',
     ]
   ];
@@ -51,6 +52,22 @@ function _civicrm_api3_mailchimpsync_Fetchandreconcile_spec(&$spec) {
  * @throws API_Exception
  */
 function civicrm_api3_mailchimpsync_Fetchandreconcile($params) {
+
+  // Safety check that the on_hold value (if given) is valid.
+  $valid = [
+    'readyToFetch',
+    'readyToFixContactIds',
+    'readyToCreateNewContactsFromMailchimp',
+    'readyToCleanUpDuplicates',
+    'readyToAddCiviOnly',
+    'readyToCheckForGroupChanges',
+    'readyToReconcileQueue',
+    'readyToCheckForDataUpdates',
+    'readyToSubmitUpdates'
+  ];
+  if (!empty($params['stop_on']) && !in_array($params['stop_on'], $valid)) {
+    throw new API_Exception('on_hold param must be one of: ' . implode(', ', $valid));
+  }
 
   if (!empty($params['group_id'])) {
     try {
