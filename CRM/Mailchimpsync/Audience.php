@@ -623,7 +623,7 @@ class CRM_Mailchimpsync_Audience
       'CREATE TEMPORARY TABLE mcs_emails_needing_matches (email VARCHAR(255) PRIMARY KEY)
         SELECT mailchimp_email email FROM civicrm_mailchimpsync_cache mc
         WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1 AND mailchimp_email IS NOT NULL;',
-      [$this->mailchimp_list_id, 'String']);
+      [1 => [$this->mailchimp_list_id, 'String']]);
 
     // We need a table of emails from Civi that aren't deleted.
     CRM_Core_DAO::executeQuery(
@@ -654,7 +654,7 @@ class CRM_Mailchimpsync_Audience
               INNER JOIN mcs_emails3 ue1 ON ue1.email = mc.mailchimp_email
        SET mc.civicrm_contact_id = ue1.contact_id
        WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1;',
-      [$this->mailchimp_list_id, 'String']);
+      [1 => [$this->mailchimp_list_id, 'String']]);
 
     $updated = $dao->affectedRows();
 
