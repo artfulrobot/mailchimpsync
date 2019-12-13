@@ -502,121 +502,51 @@ class CRM_Mailchimpsync_Audience
     )->fetchValue();
 
     if ($stats['remaining'] == 0) {
-      // No need!
+      // Nothing to do.
       return $stats;
     }
 
-
-    //
     // 1. If we find that the email is owned by a single non-deleted contact, use that.
     $start = microtime(TRUE);
     $stats['found_by_single_email'] = $this->populateMissingContactIdsPhase1();
     $stats['time_found_by_single_email'] = number_format(microtime(TRUE) - $start, 2);
     $stats['remaining'] -= $stats['found_by_single_email'];
-    if ($stats['remaining'] == 0) {
-      // All done.
-      return $stats;
+
+    if ($stats['remaining'] > 0) {
+      $start = microtime(TRUE);
+      $stats['used_first_undeleted_contact_in_group'] = $this->populateMissingContactIdsPhase2();
+      $stats['remaining'] -= $stats['used_first_undeleted_contact_in_group'];
+      $stats['time_used_first_undeleted_contact_in_group'] = number_format(microtime(TRUE) - $start, 2);
     }
 
-    //
-    // 2. Next, use the first (lowest contact ID) that owns the email that is Added to the group.
-    //
-    $start = microtime(TRUE);
-    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
-    $sql = "
-      UPDATE civicrm_mailchimpsync_cache mc
-        INNER JOIN (
-          SELECT e.email, MIN(e.contact_id) contact_id
-            FROM civicrm_email e
-            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
-            INNER JOIN civicrm_group_contact g
-                      ON e.contact_id = g.contact_id
-                      AND g.group_id = $civicrm_subscription_group_id
-                      AND g.status = 'Added'
-          GROUP BY e.email
-        ) c ON c.email = mc.mailchimp_email
-        SET mc.civicrm_contact_id = c.contact_id
-        WHERE mc.civicrm_contact_id IS NULL
-              AND c.contact_id IS NOT NULL
-              AND mc.mailchimp_list_id = %1
-      ";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-    $stats['used_first_undeleted_contact_in_group'] = $dao->affectedRows();
-    $stats['remaining'] -= $stats['used_first_undeleted_contact_in_group'];
-    $stats['time_used_first_undeleted_contact_in_group'] = number_format(microtime(TRUE) - $start, 2);
-
-    if ($stats['remaining'] == 0) {
-      // No need!
-      return $stats;
+    if ($stats['remaining'] > 0) {
+      $start = microtime(TRUE);
+      $stats['used_first_undeleted_contact_with_group_history'] = $this->populateMissingContactIdsPhase3();
+      $stats['remaining'] -= $stats['used_first_undeleted_contact_with_group_history'];
+      $stats['time_used_first_undeleted_contact_with_group_history'] = number_format(microtime(TRUE) - $start, 2);
     }
 
-    //
-    // 3. Next, use the first (lowest contact ID) that owns the email that has any group history.
-    //
-    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
-    $start = microtime(TRUE);
-    $sql = "
-      UPDATE civicrm_mailchimpsync_cache mc
-        INNER JOIN (
-          SELECT e.email, MIN(e.contact_id) contact_id
-            FROM civicrm_email e
-            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
-            INNER JOIN civicrm_subscription_history h
-                      ON e.contact_id = h.contact_id
-                      AND h.group_id = $civicrm_subscription_group_id
-          GROUP BY e.email
-        ) c ON c.email = mc.mailchimp_email
-        SET mc.civicrm_contact_id = c.contact_id
-        WHERE mc.civicrm_contact_id IS NULL
-              AND c.contact_id IS NOT NULL
-              AND mc.mailchimp_list_id = %1
-      ";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-    $stats['used_first_undeleted_contact_with_group_history'] = $dao->affectedRows();
-    $stats['remaining'] -= $stats['used_first_undeleted_contact_with_group_history'];
-    $stats['time_used_first_undeleted_contact_with_group_history'] = number_format(microtime(TRUE) - $start, 2);
-
-    if ($stats['remaining'] == 0) {
-      // No need!
-      return $stats;
+    if ($stats['remaining'] > 0) {
+      $stats['used_first_undeleted_contact'] = $this->populateMissingContactIdsPhase4();
+      $stats['remaining'] -= $stats['used_first_undeleted_contact'];
+      $stats['time_used_first_undeleted_contact'] = number_format(microtime(TRUE) - $start, 2);
     }
-
-    //
-    // 4. OK, now we just simply pick the first non-deleted contact.
-    //
-    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
-    $start = microtime(TRUE);
-    $sql = "CREATE TEMPORARY TABLE mcs1 (
-        contact_id INT(10) UNSIGNED NOT NULL DEFAULT '0',
-        email VARCHAR(255) PRIMARY KEY
-      )
-      SELECT email, MIN(contact_id) contact_id
-      FROM civicrm_email e INNER JOIN civicrm_contact c ON e.contact_id = c.id AND c.is_deleted = 0
-      WHERE e.email IS NOT NULL AND e.email IN (
-        SELECT mailchimp_email
-        FROM civicrm_mailchimpsync_cache
-        WHERE mailchimp_list_id = %1 AND civicrm_contact_id IS NULL AND mailchimp_email IS NOT NULL)
-      GROUP BY email
-    ";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-
-    $sql = "UPDATE civicrm_mailchimpsync_cache mc
-        INNER JOIN mcs1 ON mcs1.email = mc.mailchimp_email
-        SET mc.civicrm_contact_id = mcs1.contact_id
-        WHERE mc.civicrm_contact_id IS NULL
-          AND mc.mailchimp_email IS NOT NULL
-              AND mc.mailchimp_list_id = %1";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-
-    $stats['used_first_undeleted_contact'] = $dao->affectedRows();
-    $stats['remaining'] -= $stats['used_first_undeleted_contact'];
-    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs1');
-    $stats['time_used_first_undeleted_contact'] = number_format(microtime(TRUE) - $start, 2);
 
     // Remaining contacts are new to CiviCRM.
+
+    // Drop the temporary table (phases 1, 4)
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE IF EXISTS mcs_undeleted_emails;');
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails_needing_matches;');
+
     // Create them now.
     return $stats;
   }
+  /**
+   * 1. If the email we're trying to match only belongs to one (undeleted) contact,
+   * use that.
+   *
+   * @return int
+   */
   protected function populateMissingContactIdsPhase1() {
 
     CRM_Core_DAO::executeQuery(
@@ -639,7 +569,7 @@ class CRM_Mailchimpsync_Audience
 
     // Create table of emails that only belong to one contact.
     CRM_Core_DAO::executeQuery(
-      'CREATE TEMPORARY TABLE mcs_emails3 (
+      'CREATE TEMPORARY TABLE mcs_phase_1 (
         email VARCHAR(255) PRIMARY KEY,
         contact_id INT(10) UNSIGNED
       )
@@ -651,7 +581,91 @@ class CRM_Mailchimpsync_Audience
     // Now update our main table where there's only one.
     $dao = CRM_Core_DAO::executeQuery(
       'UPDATE civicrm_mailchimpsync_cache mc
-              INNER JOIN mcs_emails3 ue1 ON ue1.email = mc.mailchimp_email
+              INNER JOIN mcs_phase_1 ue1 ON ue1.email = mc.mailchimp_email
+       SET mc.civicrm_contact_id = ue1.contact_id
+       WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1;',
+      [1 => [$this->mailchimp_list_id, 'String']]);
+
+    $updated = $dao->affectedRows();
+
+    // Drop temporary table that was just for this phase
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_phase_1;');
+
+    return $updated;
+  }
+
+  /**
+   * 2. Next, use the first (lowest contact ID) that owns the email that is
+   * Added to the group.  This runs really fast (<1s), even with a lot (50k)
+   * of contacts.
+   *
+   * @return int
+   */
+  protected function populateMissingContactIdsPhase2() {
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND c1.is_deleted = 0
+            INNER JOIN civicrm_group_contact g
+                      ON e.contact_id = g.contact_id
+                      AND g.group_id = $civicrm_subscription_group_id
+                      AND g.status = 'Added'
+          GROUP BY e.email
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    return $dao->affectedRows();
+  }
+  /**
+   * 3. Next, use the first (lowest contact ID) that owns the email that has any group history.
+   * This is also fast.
+   *
+   * @return int
+   */
+  protected function populateMissingContactIdsPhase3() {
+    $civicrm_subscription_group_id = $this->getSubscriptionGroup();
+    $sql = "
+      UPDATE civicrm_mailchimpsync_cache mc
+        INNER JOIN (
+          SELECT e.email, MIN(e.contact_id) contact_id
+            FROM civicrm_email e
+            INNER JOIN civicrm_contact c1 ON e.contact_id = c1.id AND NOT c1.is_deleted
+            INNER JOIN civicrm_subscription_history h
+                      ON e.contact_id = h.contact_id
+                      AND h.group_id = $civicrm_subscription_group_id
+          GROUP BY e.email
+        ) c ON c.email = mc.mailchimp_email
+        SET mc.civicrm_contact_id = c.contact_id
+        WHERE mc.civicrm_contact_id IS NULL
+              AND c.contact_id IS NOT NULL
+              AND mc.mailchimp_list_id = %1
+      ";
+    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
+    return $dao->affectedRows();
+  }
+  protected function populateMissingContactIdsPhase4() {
+
+    // Create table with the first contact owner of each email.
+    CRM_Core_DAO::executeQuery(
+      'CREATE TEMPORARY TABLE mcs_emails_phase_4 (
+        email VARCHAR(255) PRIMARY KEY,
+        contact_id INT(10) UNSIGNED
+      )
+      SELECT email, MIN(contact_id) contact_id
+      FROM mcs_undeleted_emails ue
+      GROUP BY email;');
+
+    // Now update our main table where there's only one.
+    $dao = CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_mailchimpsync_cache mc
+              INNER JOIN mcs_emails_phase_4 ue1 ON ue1.email = mc.mailchimp_email
        SET mc.civicrm_contact_id = ue1.contact_id
        WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1;',
       [1 => [$this->mailchimp_list_id, 'String']]);
@@ -659,9 +673,7 @@ class CRM_Mailchimpsync_Audience
     $updated = $dao->affectedRows();
 
     // Drop temporary tables.
-    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails3;');
-    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails_needing_matches;');
-    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_undeleted_emails;');
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails_phase_4;');
 
     return $updated;
   }
