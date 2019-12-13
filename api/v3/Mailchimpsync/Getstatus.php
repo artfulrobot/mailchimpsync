@@ -121,6 +121,9 @@ function civicrm_api3_mailchimpsync_Getstatus($params) {
       // The sync process is not in ready state.
       $returnValues[$list_id]['crashed'] = E::ts('Possibly crashed? no logs but not in ready state.');
 
+      if (count($returnValues[$list_id]['log']) === 1) {
+        $last_log_entry = reset($returnValues[$list_id]['log']);
+      }
       if (!empty($last_log_entry)) {
         $age = time() - strtotime($last_log_entry['time']);
         if ($age < 60*30) {
