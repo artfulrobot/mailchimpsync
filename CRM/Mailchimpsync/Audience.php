@@ -561,11 +561,10 @@ class CRM_Mailchimpsync_Audience
         contact_id INT(10) UNSIGNED,
         email VARCHAR(255),
         KEY (email, contact_id))
-      SELECT contact_id, email
+      SELECT contact_id, e.email
       FROM civicrm_email e
-      WHERE e.email IS NOT NULL
-      AND EXISTS (SELECT 1 FROM mcs_emails_needing_matches me WHERE me.email = e.email )
-      AND NOT EXISTS (SELECT 1 FROM civicrm_contact WHERE id=contact_id AND is_deleted = 1);');
+      INNER JOIN mcs_emails_needing_matches me ON me.email = e.email
+      WHERE EXISTS (SELECT 1 FROM civicrm_contact WHERE id = contact_id AND is_deleted = 0);');
 
     // Create table of emails that only belong to one contact.
     CRM_Core_DAO::executeQuery(
