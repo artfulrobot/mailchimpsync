@@ -507,41 +507,12 @@ class CRM_Mailchimpsync_Audience
     }
 
 
-    $start = microtime(TRUE);
     //
     // 1. If we find that the email is owned by a single non-deleted contact, use that.
-    //
-    // Get a temporary table of contact ids and email for the missing emails.
-    // (see docs/discussion/sql-optimisation.md re performance)
-    $sql = "CREATE TEMPORARY TABLE mcs1 (
-        contact_id INT(10) UNSIGNED NOT NULL DEFAULT '0',
-        email VARCHAR(255) PRIMARY KEY
-      )
-      SELECT email, MIN(contact_id) contact_id
-      FROM civicrm_email e INNER JOIN civicrm_contact c ON e.contact_id = c.id AND c.is_deleted = 0
-      WHERE e.email IS NOT NULL AND e.email IN (
-        SELECT mailchimp_email
-        FROM civicrm_mailchimpsync_cache
-        WHERE mailchimp_list_id = %1 AND civicrm_contact_id IS NULL AND mailchimp_email IS NOT NULL)
-      GROUP BY email
-      HAVING  COUNT(DISTINCT contact_id) = 1
-    ";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-
-    $sql = "UPDATE civicrm_mailchimpsync_cache mc
-        INNER JOIN mcs1 ON mcs1.email = mc.mailchimp_email
-        SET mc.civicrm_contact_id = mcs1.contact_id
-        WHERE mc.civicrm_contact_id IS NULL
-          AND mc.mailchimp_email IS NOT NULL
-              AND mc.mailchimp_list_id = %1";
-    $dao = CRM_Core_DAO::executeQuery($sql, [1 => [$this->mailchimp_list_id, 'String']]);
-
-    $stats['found_by_single_email'] = $dao->affectedRows();
-    $stats['remaining'] -= $stats['found_by_single_email'];
-
-    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs1');
+    $start = microtime(TRUE);
+    $stats['found_by_single_email'] = $this->populateMissingContactIdsPhase1();
     $stats['time_found_by_single_email'] = number_format(microtime(TRUE) - $start, 2);
-
+    $stats['remaining'] -= $stats['found_by_single_email'];
     if ($stats['remaining'] == 0) {
       // All done.
       return $stats;
@@ -646,6 +617,55 @@ class CRM_Mailchimpsync_Audience
     // Create them now.
     return $stats;
   }
+  protected function populateMissingContactIdsPhase1() {
+
+    CRM_Core_DAO::executeQuery(
+      'CREATE TEMPORARY TABLE mcs_emails_needing_matches (email VARCHAR(255) PRIMARY KEY)
+        SELECT mailchimp_email email FROM civicrm_mailchimpsync_cache mc
+        WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1 AND mailchimp_email IS NOT NULL;',
+      [$this->mailchimp_list_id, 'String']);
+
+    // We need a table of emails from Civi that aren't deleted.
+    CRM_Core_DAO::executeQuery(
+      'CREATE TEMPORARY TABLE mcs_undeleted_emails (
+        contact_id INT(10) UNSIGNED,
+        email VARCHAR(255),
+        KEY (email, contact_id))
+      SELECT contact_id, email
+      FROM civicrm_email e
+      WHERE e.email IS NOT NULL
+      AND EXISTS (SELECT 1 FROM mcs_emails_needing_matches me WHERE me.email = e.email )
+      AND NOT EXISTS (SELECT 1 FROM civicrm_contact WHERE id=contact_id AND is_deleted = 1);');
+
+    // Create table of emails that only belong to one contact.
+    CRM_Core_DAO::executeQuery(
+      'CREATE TEMPORARY TABLE mcs_emails3 (
+        email VARCHAR(255) PRIMARY KEY,
+        contact_id INT(10) UNSIGNED
+      )
+      SELECT email, MIN(contact_id) contact_id
+      FROM mcs_undeleted_emails ue
+      GROUP BY email
+      HAVING COUNT(DISTINCT contact_id) = 1;');
+
+    // Now update our main table where there's only one.
+    $dao = CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_mailchimpsync_cache mc
+              INNER JOIN mcs_emails3 ue1 ON ue1.email = mc.mailchimp_email
+       SET mc.civicrm_contact_id = ue1.contact_id
+       WHERE mc.civicrm_contact_id IS NULL AND mc.mailchimp_list_id = %1;',
+      [$this->mailchimp_list_id, 'String']);
+
+    $updated = $dao->affectedRows();
+
+    // Drop temporary tables.
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails3;');
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_emails_needing_matches;');
+    CRM_Core_DAO::executeQuery('DROP TEMPORARY TABLE mcs_undeleted_emails;');
+
+    return $updated;
+  }
+
   /**
    * Create contacts found at Mailchimp but not in CiviCRM.
    *
