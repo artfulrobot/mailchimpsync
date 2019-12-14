@@ -1007,10 +1007,13 @@ class CRM_Mailchimpsync_Audience
     $stats = ['done' => $done, 'count' => count($cache_id_to_subs)];
 
     // For logs information, look up number of updates pending.
-    $dao = new CRM_Mailchimpsync_DAO_MailchimpsyncUpdate();
-    $dao->mailchimp_list_id = $this->mailchimp_list_id;
-    $dao->completed = 0;
-    $mailchimp_updates = (int) $dao->count();
+    $mailchimp_updates = (int) CRM_Core_DAO::singleValueQuery(
+      'SELECT COUNT(*)
+      FROM civicrm_mailchimpsync_update u
+      INNER JOIN civicrm_mailchimpsync_cache c ON u.mailchimpsync_cache_id = c.id AND c.mailchimp_list_id = %1
+      WHERE completed = 0;',
+      [1 => [$this->mailchimp_list_id, 'String']]
+    );
 
     if ($stats['done'] == $stats['count']) {
       $this->updateLock([
