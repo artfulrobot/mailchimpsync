@@ -59,6 +59,26 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
     if (!$this->civicrm_contact_id) {
       throw new Exception("Cannot unsubscribeInCiviCRM without knowing contact_id");
     }
+
+    // Before we do this (Issue #9) we need to check if there's another
+    // mailchimp record belonging to this contact that is *subscribed*
+    $other_emails = new static();
+    $other_emails->mailchimp_list_id = $this->mailchimp_list_id;
+    $other_emails->civicrm_contact_id = $this->civicrm_contact_id;
+    $other_emails->find();
+    while ($other_emails->fetch()) {
+      if ($other_emails->id == $this->id) {
+        continue;
+      }
+      if ($other_emails->isSubscribedAtMailchimp()) {
+        // There's another email belonging to this contact that Mailchimp has
+        // down as subscribed. So we should ignore unsubscribing this old one
+        // in terms of removing from the CiviCRM group.
+        return TRUE;
+        break;
+      }
+    }
+
     $contacts = [$this->civicrm_contact_id];
     // Record as Removed at CiviCRM.
     CRM_Contact_BAO_GroupContact::removeContactsFromGroup(

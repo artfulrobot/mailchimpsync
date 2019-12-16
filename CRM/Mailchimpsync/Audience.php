@@ -1133,6 +1133,8 @@ class CRM_Mailchimpsync_Audience
           // Mailchimp has unsubscribed/cleaned/archived this contact
           // (or, converted it to transactional - not sure if that happens)
           // So we need to remove this contact from the subscription group.
+          // Issue #9: UNLESS the CiviCRM contact has another mailchimp cache
+          // record that is subscribed.
           $cache_entry->unsubscribeInCiviCRM($this);
           return FALSE;
         }
