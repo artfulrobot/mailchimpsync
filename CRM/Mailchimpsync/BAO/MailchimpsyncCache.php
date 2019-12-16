@@ -99,15 +99,16 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
   }
   /**
    * Checks whether a contact's email is on hold.
+   * Nb. a missing email (e.g. not yet subscribed at mailchimp) is treated as not on hold.
    *
    * @return boolean TRUE if it is on hold.
    */
   public function mailchimpEmailIsOnHoldInCivi() {
     if (!$this->mailchimp_email) {
-      throw new \BadMethodCallException('mailchimpEmailIsOnHoldInCivi called for a record without a mailchimp_email value');
+      return FALSE;
     }
     $email = new CRM_Core_BAO_Email();
-    $email->email = $this->email;
+    $email->email = $this->mailchimp_email;
     $email->on_hold = 1;
     return (bool) $email->find();
   }
