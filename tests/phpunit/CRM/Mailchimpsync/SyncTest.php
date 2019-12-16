@@ -649,6 +649,174 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
   }
 
   /**
+   *
+   * https://github.com/artfulrobot/mailchimpsync/issues/9
+   *
+   * @dataProvider reconcileIssue9DataProvider
+   */
+  public function testReconcileIssue9($description, $mailchimp_status_1, $mailchimp_status_2, $civicrm_status, $expected_civicrm_status) {
+    $audience = $this->createConfigFixture1AndGetAudience(TRUE);
+
+    // Create one test contact.
+    $contact_1 = (int) civicrm_api3('Contact', 'create', [
+      'contact_type' => 'Individual',
+      'first_name'   => 'test1',
+      'email'        => 'contact1@example.com'])['id'];
+
+    // Add a 2nd email for this contact.
+    civicrm_api3('Email', 'create', ['email' => 'email2@example.com', 'contact_id' => $contact_1]);
+
+    // Create cache records manually for our fixture.
+    $today = date('Y-m-d') . 'T00:00:00Z';
+
+    // Cache record for original email - removed today at Mailchimp
+    // We set it as added yesterday in Civi so Mailchimp is always right.
+    $cache_1 = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_1->civicrm_contact_id = $contact_1;
+    $cache_1->mailchimp_list_id = 'list_1';
+    $cache_1->mailchimp_email = 'contact1@example.com';
+    $cache_1->mailchimp_member_id = md5('contact1@example.com');
+    $cache_1->mailchimp_updated = $today;
+    $cache_1->mailchimp_status = $mailchimp_status_1;
+    $cache_1->sync_status = 'todo';
+    $cache_1->civicrm_groups = $audience->getSubscriptionGroup() . ";$civicrm_status;$this->yesterday";
+    $cache_1->save();
+    // Use this cache record to add them to the group.
+    $cache_1->subscribeInCiviCRM($audience);
+    if ($civicrm_status === 'Removed') {
+      $contacts = [$contact_1];
+      // Record as Removed at CiviCRM.
+      CRM_Contact_BAO_GroupContact::removeContactsFromGroup(
+        $contacts, $audience->getSubscriptionGroup(), 'test', 'Removed');
+    }
+
+    // Create 2nd cache record for 2nd email, subscribed today at MC.
+    $cache_2 = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache_2->civicrm_contact_id = $contact_1;
+    $cache_2->mailchimp_list_id = 'list_1';
+    $cache_2->mailchimp_email = 'email2@example.com';
+    $cache_2->mailchimp_member_id = md5('email2@example.com');
+    $cache_2->mailchimp_updated = $today;
+    $cache_2->mailchimp_status = $mailchimp_status_2;
+    $cache_2->sync_status = 'todo';
+    $cache_2->civicrm_groups = $audience->getSubscriptionGroup() . ";$civicrm_status;$this->yesterday";
+    $cache_2->save();
+
+    // Now it's all set up, run reconciliation, first for cache_1, then 2.
+    $updates = [];
+    $subs = $audience->parseSubs($cache_1->mailchimp_updated, $cache_1->civicrm_groups);
+    $audience->reconcileSubscriptionGroup($updates, $cache_1, $subs);
+    $this->assertEquals([], $updates, "Expected no updates to Mailchimp.");
+    $updates = [];
+    // ... 2nd cache record.
+    $subs = $audience->parseSubs($cache_2->mailchimp_updated, $cache_2->civicrm_groups);
+    $audience->reconcileSubscriptionGroup($updates, $cache_2, $subs);
+    $this->assertEquals([], $updates, "Expected no updates to Mailchimp.");
+
+    // We expect to find that the contact is $expected_civicrm_status
+    $gc = new CRM_Contact_BAO_GroupContact();
+    $gc->contact_id = $contact_1;
+    $gc->group_id = $audience->getSubscriptionGroup();
+
+    $this->assertEquals(1, $gc->find(1), "No GroupContact record.");
+    $this->assertEquals($expected_civicrm_status, $gc->status, "Expected contact to be $expected_civicrm_status to group.");
+  }
+
+  /**
+   * Data provider for testReconcileIssue9
+   *
+   */
+  public function reconcileIssue9DataProvider() {
+    return [
+      // These tests passed before issue #9 was handled, tests exist to check regressions.
+      [
+        'unsubscribed/unsubscribed means Removed',
+        'unsubscribed', 'unsubscribed',
+        'Added',
+        'Removed'
+      ],
+      [
+        'cleaned/unsubscribed means Removed',
+        'cleaned', 'unsubscribed',
+        'Added',
+        'Removed'
+      ],
+      [
+        'cleaned/unsubscribed means Removed',
+        'unsubscribed', 'cleaned',
+        'Added',
+        'Removed'
+      ],
+      [
+        'subscribed/subscribed means Added',
+        'subscribed', 'subscribed',
+        'Added',
+        'Added'
+      ],
+      [
+        'subscribed/subscribed means Added - should subscribe at CiviCRM',
+        'subscribed', 'subscribed',
+        'Removed',
+        'Added'
+      ],
+      [
+        'cleaned/unsubscribed means Removed - should stay removed',
+        'unsubscribed', 'cleaned',
+        'Removed',
+        'Removed'
+      ],
+      // The following fail under issue #9
+      [
+        'unsubscribed/subscribed means Added',
+        'unsubscribed', 'subscribed',
+        'Added',
+        'Added'
+      ],
+      [
+        'subscribed/unsubscribed means Added',
+        'subscribed', 'unsubscribed',
+        'Added',
+        'Added'
+      ],
+      [
+        'subscribed/cleaned means Added',
+        'subscribed', 'cleaned',
+        'Added',
+        'Added'
+      ],
+      // These tests check when CiviCRM was not subscribed.
+      // They pass pre issue9
+      // #10
+      [
+        'unsubscribed/unsubscribed means Added',
+        'unsubscribed', 'unsubscribed',
+        'Removed',
+        'Removed'
+      ],
+      // #11
+      [
+        'unsubscribed/subscribed means Added',
+        'unsubscribed', 'subscribed',
+        'Removed',
+        'Added'
+      ],
+      // #12
+      [
+        'subscribed/unsubscribed means Added',
+        'subscribed', 'unsubscribed',
+        'Removed',
+        'Added'
+      ],
+      // #13
+      [
+        'subscribed/cleaned means Added',
+        'subscribed', 'cleaned',
+        'Removed',
+        'Added'
+      ],
+    ];
+  }
+  /**
    * Provides test cases for testReconcileSubscriptionGroup
    *
    */
