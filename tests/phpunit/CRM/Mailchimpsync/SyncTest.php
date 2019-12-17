@@ -654,7 +654,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
    *
    * @dataProvider reconcileIssue9DataProvider
    */
-  public function testReconcileIssue9($description, $mailchimp_status_1, $mailchimp_status_2, $civicrm_status, $expected_civicrm_status) {
+  public function testReconcileIssue9($description, $mailchimp_status_1, $mailchimp_status_2, $civicrm_status, $expected_civicrm_status, $expect_cannot_sync=FALSE) {
     $audience = $this->createConfigFixture1AndGetAudience(TRUE);
 
     // Create one test contact.
@@ -705,12 +705,28 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // Now it's all set up, run reconciliation, first for cache_1, then 2.
     $updates = [];
     $subs = $audience->parseSubs($cache_1->mailchimp_updated, $cache_1->civicrm_groups);
-    $audience->reconcileSubscriptionGroup($updates, $cache_1, $subs);
+    try {
+      $audience->reconcileSubscriptionGroup($updates, $cache_1, $subs);
+    }
+    catch (CRM_Mailchimpsync_CannotSyncException $e) {
+      if (!$expect_cannot_sync) {
+        // We did not expect this.
+        throw $e;
+      }
+    }
     $this->assertEquals([], $updates, "Expected no updates to Mailchimp.");
     $updates = [];
     // ... 2nd cache record.
     $subs = $audience->parseSubs($cache_2->mailchimp_updated, $cache_2->civicrm_groups);
-    $audience->reconcileSubscriptionGroup($updates, $cache_2, $subs);
+    try {
+      $audience->reconcileSubscriptionGroup($updates, $cache_2, $subs);
+    }
+    catch (CRM_Mailchimpsync_CannotSyncException $e) {
+      if (!$expect_cannot_sync) {
+        // We did not expect this.
+        throw $e;
+      }
+    }
     $this->assertEquals([], $updates, "Expected no updates to Mailchimp.");
 
     // We expect to find that the contact is $expected_civicrm_status
@@ -733,56 +749,67 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
         'unsubscribed/unsubscribed means Removed',
         'unsubscribed', 'unsubscribed',
         'Added',
-        'Removed'
+        'Removed',
+        FALSE
       ],
       [
         'cleaned/unsubscribed means Removed',
         'cleaned', 'unsubscribed',
         'Added',
-        'Removed'
+        'Removed',
+        FALSE
       ],
       [
         'cleaned/unsubscribed means Removed',
         'unsubscribed', 'cleaned',
         'Added',
-        'Removed'
+        'Removed',
+        FALSE
+
       ],
       [
         'subscribed/subscribed means Added',
         'subscribed', 'subscribed',
         'Added',
-        'Added'
+        'Added',
+        FALSE
+
       ],
       [
         'subscribed/subscribed means Added - should subscribe at CiviCRM',
         'subscribed', 'subscribed',
         'Removed',
-        'Added'
+        'Added',
+        FALSE
       ],
       [
         'cleaned/unsubscribed means Removed - should stay removed',
         'unsubscribed', 'cleaned',
         'Removed',
-        'Removed'
+        'Removed',
+        FALSE
       ],
-      // The following fail under issue #9
+      // The following fail under issue#9
       [
         'unsubscribed/subscribed means Added',
         'unsubscribed', 'subscribed',
         'Added',
-        'Added'
+        'Added',
+        TRUE
       ],
       [
         'subscribed/unsubscribed means Added',
         'subscribed', 'unsubscribed',
         'Added',
-        'Added'
+        'Added',
+        TRUE
       ],
       [
         'subscribed/cleaned means Added',
         'subscribed', 'cleaned',
         'Added',
-        'Added'
+        'Added',
+        TRUE
       ],
       // These tests check when CiviCRM was not subscribed.
       // They pass pre issue9
@@ -791,28 +818,32 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
         'unsubscribed/unsubscribed means Added',
         'unsubscribed', 'unsubscribed',
         'Removed',
-        'Removed'
+        'Removed',
+        FALSE
       ],
       // #11
       [
         'unsubscribed/subscribed means Added',
         'unsubscribed', 'subscribed',
         'Removed',
-        'Added'
+        'Added',
+        FALSE
       ],
       // #12
       [
         'subscribed/unsubscribed means Added',
         'subscribed', 'unsubscribed',
         'Removed',
-        'Added'
+        'Added',
+        FALSE
       ],
       // #13
       [
         'subscribed/cleaned means Added',
         'subscribed', 'cleaned',
         'Removed',
-        'Added'
+        'Added',
+        FALSE
       ],
     ];
   }
