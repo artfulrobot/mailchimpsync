@@ -15,6 +15,7 @@
   margin-right: 1rem;
   color: white;
   background: #888;
+  text-align: center;
 }
 .mcs-status-pill.good { background: #080; }
 .mcs-status-pill.meh { background: #a88601; }
@@ -45,6 +46,12 @@
 .mcs-cache-row__body p {
   margin-bottom: 0.5rem;
 }
+.mcs-cache-row__cache-id {
+  font-size: 0.75rem;
+  font-weight: normal;
+  opacity: 0.4;
+  margin-left: 1rem;
+}
 .mcs-cache-filters {
   background-color: rgba(0,0,0,0.05);
   margin-bottom: 2rem;
@@ -68,7 +75,61 @@ code.mcs-webhook-url {
   font-size: 0.75rem;
   color: #444;
 }
+table.mcs-cache-row__comparison {
+  margin-bottom: 1rem;
+}
 .mcs-cache-row__error {
   color:#a00;
   padding: 1rem 0;
+}
+ul.mcs-cache-row__updates {
+  margin:0 ;
+  padding:0 ;
+}
+ul.mcs-cache-row__updates li {
+  padding: 0;
+  margin: 0 0 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.mcs-cache-row__update-status { flex: 0 0 8rem; }
+.mcs-cache-row__update-data  { flex: 1 20rem; }
+
+.mcs-code {
+  white-space: pre-wrap;
+  font-family: monospace;
+  opacity:0.8;
+}
+.mcs-error { color: #a00; }
+ul.mcs-overview {
+  margin: 0;
+  padding: 0;
+}
+ul.mcs-overview li {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+@media screen and (min-width: 768px) {
+  ul.mcs-overview li {
+    display:grid;
+    grid-template-columns: 9rem 11rem 1fr;
+    align-items: start;
+  }
+}
+.mcs-nav {
+  display: flex;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 1rem;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.mcs-nav__primary {
+  flex: 1 1 auto;
+}
+.mcs-nav__secondary {
+  padding-left: 1rem;
+  flex: 0 0 auto;
 }

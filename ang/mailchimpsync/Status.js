@@ -54,6 +54,7 @@
     $scope.cacheRows = null;
     $scope.cacheRowCount = null;
     $scope.isLoading = true;
+    $scope.cacheBrowserIsLoading = false;
     $scope.cacheParams = {
       sync_status: '',
       mailchimp_status: '',
@@ -128,7 +129,12 @@
         // This is a like query.
         p.mailchimp_email = {LIKE: '%' + p.mailchimp_email + '%'};
       }
+      if (! p['mailchimp_list_id']) {
+        alert("Select Mailchimp Audience");
+        return;
+      }
 
+      $scope.cacheBrowserIsLoading = true;
       if (!skipRecount) {
         crmApi('MailchimpsyncCache', 'getcount', p)
         .then(r => {
@@ -138,13 +144,15 @@
         })
         .then(r => {
           $scope.cacheRows = r.values || [];
+          $scope.cacheBrowserIsLoading = false;
         });
       }
       else {
-        Object.assign(p, {options: $scope.cacheOptions});
+        Object.assign(p, {options: $scope.cacheOptions, troubleshoot: 1});
         crmApi('MailchimpsyncCache', 'get', p)
         .then(r => {
           $scope.cacheRows = r.values || [];
+          $scope.cacheBrowserIsLoading = false;
         });
       }
     };

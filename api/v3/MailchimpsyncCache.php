@@ -95,34 +95,76 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
         $row['civicrm_updated'] = $parsed[$audience->getSubscriptionGroup()]['updated'];
         $row['most_recent'] = $parsed[$audience->getSubscriptionGroup()]['mostRecent'];
         $row['civicrm_other_groups'] = $parsed;
+        $row['mailchimp_data'] = json_encode(unserialize($row['mailchimp_data']), JSON_PRETTY_PRINT);
+        $row['civicrm_data'] = json_encode(unserialize($row['civicrm_data']), JSON_PRETTY_PRINT);
 
         $row['civicrm_display_name'] = $names['values'][$row['civicrm_contact_id']]['display_name'] ?? 'Unknown';
 
-        if ($row['sync_status'] === 'fail') {
-          // As this has failed, look up up to 3 recent failures.
-          $sql = "SELECT id, error_response
-            FROM civicrm_mailchimpsync_update
-            WHERE mailchimpsync_cache_id = %1 AND error_response IS NOT NULL AND error_response != ''
-            ORDER BY id DESC
-            LIMIT 3";
-          $fails = CRM_Core_DAO::executeQuery($sql, [1=>[$row['id'], 'String']])->fetchMap('id', 'error_response');
-          $row['errors'] = '';
-          if ($fails) {
-            foreach ($fails as $fail) {
-              $fail = json_decode($fail);
-              $row['errors'] .= "{$fail->title}: {$fail->detail}";
-              if ($fail->title == 'Member Exists') {
-                $row['errors'] .= ' ' .E::ts( "One cause of 'Member Exists' errors is that you have two separate contacts in CiviCRM for the same email, which leads to an impossible sync situation (because feasibly you could subscribe one contact and unsubscribe the other!). You should check and merge contacts if you find duplicates." );
-              }
+        // Look up the last 3 updates to see if there are any failures.
+        $sql = "SELECT data, completed, error_response
+          FROM civicrm_mailchimpsync_update
+          WHERE mailchimpsync_cache_id = %1
+          ORDER BY id DESC
+          LIMIT 3";
+        $fails = CRM_Core_DAO::executeQuery($sql, [1=>[$row['id'], 'String']]);
+        $row['errors'] = '';
+        $row['updates'] = [];
+        while ($fails->fetch()) {
+          $update_row = $fails->toArray();
+          $update_row['status'] = $fails->completed ? 'ok' : 'pending';
+          $update_row['error'] = '';
+          //$update_row['data'] = unserialize($update_row)
+          unset($update_row['error_response']);
+
+          $fail = json_decode($fails->error_response);
+          if ($fail) {
+            $update_row['error'] = "{$fail->title}: {$fail->detail}";
+            if ($fail->title == 'Member Exists') {
+              $update_row['error'] .= ' ' . E::ts( "One cause of 'Member Exists' errors is that you have two separate contacts in CiviCRM for the same email, which leads to an impossible sync situation (because feasibly you could subscribe one contact and unsubscribe the other!). You should check and merge contacts if you find duplicates." );
             }
+            $update_row['status'] = 'error';
+          }
+          $row['updates'][] = $update_row;
+        }
+
+        if ($row['sync_status'] === 'fail') {
+          if ($row['mailchimp_status'] === 'cleaned') {
+            // We can explain this one.
+            $row['errors'] = '"Cleaned" contacts cannot be resubscribed.';
           }
           else {
-            if ($row['mailchimp_status'] === 'cleaned') {
-              // We can explain this one.
-              $row['errors'] = '"Cleaned" contacts cannot be resubscribed.';
+            // Set up default message.
+            $row['errors'] = 'Unknown error.';
+
+            // Are there other rows held back by other emails owned by this contact?
+            $other_emails = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+            $other_emails->mailchimp_list_id = $row['mailchimp_list_id'];
+            $other_emails->civicrm_contact_id = $row['civicrm_contact_id'];
+            $other_emails->find();
+            $list = [];
+            while ($other_emails->fetch()) {
+              if ($other_emails->id == $row['id']) {
+                continue;
+              }
+              if ($other_emails->isSubscribedAtMailchimp()) {
+                $list[] = $other_emails->mailchimp_email;
+              }
+            }
+            if ($list) {
+              // Update error message.
+              $c = count($list);
+              $row['errors'] = "This CiviCRM contact has " . ($c + 1) . " emails. This one is unsubscribed at Mailchimp, "
+                . "but the other " . (($c>1) ? 's' : '') . " - " . implode(' and ', $list) . " are subscribed. This shows as a "
+                . "fail here but it's fine that we're ignoring it.";
             }
             else {
-              $row['errors'] = 'Unknown error: ' . implode("\n", $fails) ;
+              // Maybe it's cos it's on hold.
+              $email_dao = new CRM_Core_DAO_Email();
+              $email_dao->contact_id = $row['civicrm_contact_id'];
+              $email_dao->on_hold = 0;
+              if (!$email_dao->count()) {
+                $row['errors'] = E::ts("This contact's email is on hold in CiviCRM so we're not going to subscribe them.");
+              }
             }
           }
         }

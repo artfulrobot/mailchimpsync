@@ -8,25 +8,31 @@
   <div crm-ui-debug="mcsStatus"></div>
   <div crm-ui-debug="mailingGroups"></div>
 
-  <p>
+  <nav class="mcs-nav" >
+    <span class="mcs-nav__primary">
     <button ng-click="getDetailedUpdate()" nf-disabled="isLoading" >{{ isLoading ? 'Loading' : 'Refresh'}}</button>
-    &nbsp; <a href ng-show="view !== 'overview'" ng-click="showOverview()" >Back to overview</a>
-    &nbsp; <a href ng-show="view !== 'detail' && selectedListId" ng-click="view='detail'" >Back to {{mailingGroups[selectedList.subscriptionGroup].title}}</a>
-    &nbsp; <a href ng-show="view !== 'cache'" ng-click="cacheView()" >Browse Cache</a>
-  </p>
+    &nbsp; <button class="secondary btn-secondary" ng-show="view !== 'overview'" ng-click="showOverview()" >Back to overview</button>
+    &nbsp; <button class="secondary btn-secondary" ng-show="view !== 'detail' && selectedListId" ng-click="view='detail'" >Back to {{mailingGroups[selectedList.subscriptionGroup].title}}</button>
+    </span>
+    <span class="mcs-nav__secondary">
+      <a href ng-show="view !== 'cache'" ng-click="cacheView()" >Browse Cache</a>
+    </span>
+  </nav>
 
     <!-- Overview ========================================================== -->
     <div ng-show="view === 'overview'" >
-      <p ng-repeat="(listId, list) in mcsConfig.lists" >
-        <span ng-if="mcsStatus[listId].in_sync">
-          <span class="mcs-status-pill good">In sync</span> {{mcsStatus[listId].lastSyncTimeHuman}}
-        </span>
-        <span ng-if="!mcsStatus[listId].in_sync">
-          <span class="mcs-status-pill meh" >Not in sync</span>
-          <span ng-if="!mcsStatus[listId].lastSyncTime" >Sync never run.</span>
-        </span>
-        <a href ng-click="showDetails(listId)" >{{ mailingGroups[list.subscriptionGroup].title }} / {{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</a>
-      </p>
+      <ul class="mcs-overview">
+        <li ng-repeat="(listId, list) in mcsConfig.lists" >
+          <span ng-if="mcsStatus[listId].in_sync" class="mcs-status-pill good">In sync</span>
+          <span ng-if="mcsStatus[listId].in_sync" >{{mcsStatus[listId].lastSyncTimeHuman}}</span>
+          <span ng-if="!mcsStatus[listId].in_sync" class="mcs-status-pill meh" >Not in sync</span>
+          <span ng-if="!mcsStatus[listId].in_sync" >
+            <span ng-if="!mcsStatus[listId].lastSyncTime" >Sync never run.</span>
+            <span ng-if="mcsStatus[listId].lastSyncTime" >{{mcsStatus[listId].lastSyncTimeHuman}}</span>
+          </span>
+          <a href ng-click="showDetails(listId)" >{{ mailingGroups[list.subscriptionGroup].title }} / {{ mcsConfig.accounts[list.apiKey].audiences[listId].name }}</a>
+        </li>
+      </ul>
     </div>
     <!-- Detail ========================================================== -->
     <div ng-show="view === 'detail'" >
@@ -214,26 +220,30 @@
           </div>
 
           <div class="mcs-cache-filter">
-            <button ng-click="loadCacheData()" >Search</button>
+            <button ng-click="loadCacheData()" >{{ cacheBrowserIsLoading ? '...searching...'  : 'Search' }}</button>
           </div>
         </form>
       </div>
 
-      <div ng-if="cacheRows === null"><span class="mcs-status-pill grey">Loading</span></div>
-
-      <p>{{ cacheRowCount }} matches</p>
-
+      <div ng-if="cacheRows === null">Search results will be shown below</div>
       <div ng-if="cacheRows !== null">
-        <div ng-repeat="row in cacheRows" class="mcs-cache-row">
+        <p>{{ cacheRowCount }} matches.
+          <a href ng-if="cacheOptions.offset > 0"
+            ng-click="cacheOptions.offset = cacheOptions.offset - cacheOptions.limit; loadCacheData(true)">Load previous page</a>
+          <a href ng-if="(cacheOptions.offset + cacheOptions.limit) < cacheRowCount"
+            ng-click="cacheOptions.offset = cacheOptions.offset + cacheOptions.limit; loadCacheData(true)">Load next page</a>
+        </p>
 
+        <div ng-repeat="row in cacheRows" class="mcs-cache-row">
           <div class="mcs-cache-row__header">
             <span class="mcs-cache-row__who">
               <span class="mcs-status-pill {{ mapSyncStatusToColour(row.sync_status) }}" >{{row.sync_status}}</span>
+              <code class="mcs-cache-row__cache-id" title="Cache ID">[{{ row.id }}]</code>
             </span>
             <span class="mcs-cache-row__list">{{ mailingGroups[mcsConfig.lists[row.mailchimp_list_id].subscriptionGroup].title}}</span>
           </div>
           <div class="mcs-cache-row__body">
-            <table><thead><th width="33%"></th><th width="33%">Mailchimp</th><th width="33%">CiviCRM</th></tr></thead>
+            <table class="mcs-cache-row__comparison"><thead><th width="33%"></th><th width="33%">Mailchimp</th><th width="33%">CiviCRM</th></tr></thead>
               <tbody>
 
                 <tr>
@@ -262,12 +272,22 @@
 
                 <tr>
                   <td>Extra data</td>
-                  <td>{{row.mailchimp_data}}</td>
-                  <td>{{row.civicrm_other_groups}}<br />{{row.civicrm_data}}</td>
+                  <td class="mcs-code">{{row.mailchimp_data}}</td>
+                  <td><div class="mcs-code">{{row.civicrm_other_groups | json}}</div><div class="mcs-code">{{row.civicrm_data}}</div></td>
                 </tr>
 
               </tbody>
             </table>
+            <p>Last 3 Mailchimp updates (latest first):</p>
+            <ul ng-if="row.updates" class="mcs-cache-row__updates">
+              <li ng-repeat="(i, update) in row.updates">
+                <span class="mcs-cache-row__update-status mcs-status-pill {{ { ok: 'good', pending: 'meh', error: 'bad' }[update.status] }}">{{ update.status }}</span>
+                <div class="mcs-cache-row__update-data">
+                  <div class="mcs-code">{{update.data}}</div>
+                  <div class="mcs-error">{{update.error}}</div>
+                </div>
+              </li>
+            </ul>
             <div ng-if="row.errors" class="mcs-cache-row__error">
               {{row.errors}}
             </div>

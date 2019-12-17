@@ -54,10 +54,16 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
    * @param CRM_Mailchimpsync_Audience $audience
    *
    * @return CRM_Mailchimpsync_BAO_MailchimpsyncCache
+   *
+   * @throw CRM_Mailchimpsync_CannotSyncException if we can't unsubscribe them
+   * because another mailchimp cache record (i.e. a different email) has them
+   * as subscribed.
+   *
+   * @throw BadMethodCallException if called without a CiviCRM contact ID being present.
    */
   public function unsubscribeInCiviCRM(CRM_Mailchimpsync_Audience $audience) {
     if (!$this->civicrm_contact_id) {
-      throw new Exception("Cannot unsubscribeInCiviCRM without knowing contact_id");
+      throw new BadMethodCallException("Cannot unsubscribeInCiviCRM without knowing contact_id");
     }
 
     // Before we do this (Issue #9) we need to check if there's another
@@ -74,7 +80,7 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
         // There's another email belonging to this contact that Mailchimp has
         // down as subscribed. So we should ignore unsubscribing this old one
         // in terms of removing from the CiviCRM group.
-        return TRUE;
+        throw new CRM_Mailchimpsync_CannotSyncException("Refusing to unsubscribe contact because they have another email that is subscribed.");
         break;
       }
     }

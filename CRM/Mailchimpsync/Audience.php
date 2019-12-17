@@ -1098,7 +1098,6 @@ class CRM_Mailchimpsync_Audience
       $cache_entry->save();
     }
 
-
   }
 
   /**
