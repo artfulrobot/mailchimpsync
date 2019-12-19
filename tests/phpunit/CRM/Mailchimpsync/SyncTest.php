@@ -1603,6 +1603,19 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $cache_entry->sync_status = 'ok';
     $cache_entry->save();
 
+    // Create a pending update
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_cache_id = $cache_entry->id;
+    $update->completed = 0;
+    $update->data = '';
+    $update->save();
+
+    $update1 = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update1->mailchimpsync_cache_id = $cache_entry->id;
+    $update1->completed = 1;
+    $update1->data = '';
+    $update1->save();
+
     // Mock get for this contact.
     // Nb. we spoof a date slightly in the future because this test creates the
     // civi group contact record then immediately fires the mailchimp, but
@@ -1627,6 +1640,19 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
 
     $c = civicrm_api3('contact', 'getsingle', ['id' => $cache_entry->civicrm_contact_id]);
     $this->assertContactIsNotInGroup($c['id'], $audience->getSubscriptionGroup());
+
+    // Check that the update was cancelled.
+    $update2 = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update2->id = $update->id;
+    $this->assertEquals(1, $update2->find(1));
+    $this->assertEquals(1, $update2->completed, "Expected update to have been marked completed.");
+    $this->assertEquals("Aborted because member was unsubscribed before submission.", $update2->error_response);
+
+    // Check completed upates unaffected.
+    $update2 = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update2->id = $update1->id;
+    $this->assertEquals(1, $update2->find(1));
+    $this->assertEquals("", $update2->error_response);
   }
   /**
    */

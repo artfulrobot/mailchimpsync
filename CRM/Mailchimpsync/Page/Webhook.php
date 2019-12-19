@@ -197,7 +197,7 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
     if ($cache_item) {
       // As this is an unsubscribe, coming from Mailchimp, we should abort any
       // updates that have not yet been submitted for this cache record.
-      $cache_item->abortUpdates($audience);
+      $cache_item->abortUpdates("Aborted because member was $type before submission.");
 
       if ($type === 'cleaned') {
         // Put email on hold.
