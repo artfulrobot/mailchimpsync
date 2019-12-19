@@ -25,6 +25,24 @@ class CRM_Mailchimpsync_BAO_MailchimpsyncCache extends CRM_Mailchimpsync_DAO_Mai
 
 
   /**
+   * Abort any unsubmitted updates.
+   *
+   * Used when processing an unsubscribe from Mailchimp.
+   */
+  public function abortUpdates($message) {
+    CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_mailchimpsync_update
+       SET error_response = %1, completed = 1
+       WHERE mailchimpsync_cache_id = %2
+         AND completed = 0
+         AND mailchimpsync_batch_id IS NULL;',
+      [
+        1 => [$message, 'String'],
+        2 => [$this->id, 'Integer'],
+      ]);
+  }
+
+  /**
    * Returns TRUE if we consider the person to be subscribed at Mailchimp.
    *
    * @return bool

@@ -194,17 +194,23 @@ class CRM_Mailchimpsync_Page_Webhook extends CRM_Core_Page {
     $audience = CRM_Mailchimpsync_Audience::newFromListId($list_id);
     $email = $this->requireParam($data, 'email');
     $cache_item = $audience->syncSingle($email);
-    if ($cache_item && $type === 'cleaned') {
-      // Put email on hold.
-      $results = civicrm_api3('Email', 'get', [
-        'email' => $email, 'contact_id' => $cache_item->civicrm_contact_id
-      ]);
-      foreach ($results['values'] ?? [] as $record) {
-        civicrm_api3('Email', 'create', [
-          'id'        => $record['id'],
-          'on_hold'   => 1,
-          'hold_date' => date('YmdHis'),
+    if ($cache_item) {
+      // As this is an unsubscribe, coming from Mailchimp, we should abort any
+      // updates that have not yet been submitted for this cache record.
+      $cache_item->abortUpdates($audience);
+
+      if ($type === 'cleaned') {
+        // Put email on hold.
+        $results = civicrm_api3('Email', 'get', [
+          'email' => $email, 'contact_id' => $cache_item->civicrm_contact_id
         ]);
+        foreach ($results['values'] ?? [] as $record) {
+          civicrm_api3('Email', 'create', [
+            'id'        => $record['id'],
+            'on_hold'   => 1,
+            'hold_date' => date('YmdHis'),
+          ]);
+        }
       }
     }
     return 200;
