@@ -1691,7 +1691,8 @@ class CRM_Mailchimpsync_Audience
       }
     }
 
-    $sql = 'SELECT COUNT(*) c FROM civicrm_mailchimpsync_update up INNER JOIN civicrm_mailchimpsync_cache c ON c.mailchimp_list_id = %1 AND up.mailchimpsync_cache_id = c.id
+    $sql = 'SELECT COUNT(*) c FROM civicrm_mailchimpsync_update up
+      INNER JOIN civicrm_mailchimpsync_cache c ON c.mailchimp_list_id = %1 AND up.mailchimpsync_cache_id = c.id
       WHERE up.completed = 0';
     $stats['mailchimp_updates_pending'] = (int) CRM_Core_DAO::executeQuery($sql, $params)->fetchValue();
 

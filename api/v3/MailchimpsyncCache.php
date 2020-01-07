@@ -101,10 +101,12 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
         $row['civicrm_display_name'] = $names['values'][$row['civicrm_contact_id']]['display_name'] ?? 'Unknown';
 
         // Look up the last 3 updates to see if there are any failures.
-        $sql = "SELECT data, completed, error_response
-          FROM civicrm_mailchimpsync_update
-          WHERE mailchimpsync_cache_id = %1
-          ORDER BY id DESC
+        $sql = "SELECT u.data, u.completed, u.error_response,
+                       b.submitted_at, b.completed_at, b.status
+          FROM civicrm_mailchimpsync_update u
+          LEFT JOIN civicrm_mailchimpsync_batch b ON u.mailchimpsync_batch_id = b.id
+          WHERE u.mailchimpsync_cache_id = %1
+          ORDER BY u.id DESC
           LIMIT 3";
         $fails = CRM_Core_DAO::executeQuery($sql, [1=>[$row['id'], 'String']]);
         $row['errors'] = '';
@@ -113,6 +115,10 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
           $update_row = $fails->toArray();
           $update_row['status'] = $fails->completed ? 'ok' : 'pending';
           $update_row['error'] = '';
+          $update_row['submitted_at'] = $fails->submitted_at;
+          $update_row['completed_at'] = $fails->completed_at;
+          $update_row['batch_status'] = $fails->status;
+
           //$update_row['data'] = unserialize($update_row)
           unset($update_row['error_response']);
 

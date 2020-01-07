@@ -284,6 +284,7 @@
                 <span class="mcs-cache-row__update-status mcs-status-pill {{ { ok: 'good', pending: 'meh', error: 'bad' }[update.status] }}">{{ update.status }}</span>
                 <div class="mcs-cache-row__update-data">
                   <div class="mcs-code">{{update.data}}</div>
+                  <div>Submitted: {{update.submitted_at || '(Never)'}} Completed: {{update.completed_at || '(Never)'}}</div>
                   <div class="mcs-error">{{update.error}}</div>
                 </div>
               </li>
