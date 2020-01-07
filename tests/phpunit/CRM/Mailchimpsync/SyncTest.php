@@ -1482,7 +1482,7 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // submitted with the next sync run. But subsequent sync runs should
     // not try to resubmit a pending one.
     // --------------------------------------------------------------
-    $this->dumpTables();
+    // $this->dumpTables();
 
     // Now do the next sync.
     $audience->syncSingle('contact1@example.com');
@@ -1490,7 +1490,6 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     // Check the updates.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
     $update->mailchimpsync_cache_id = $cache->id;
-    $this->dumpTables();
     // There should now be three updates.
     $this->assertEquals(3, $update->find());
     while ($update->fetch()) {

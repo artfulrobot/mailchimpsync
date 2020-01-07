@@ -1177,7 +1177,36 @@ class CRM_Mailchimpsync_Audience
             if ($cache_entry->mailchimpEmailIsOnHoldInCivi()) {
               throw new CRM_Mailchimpsync_CannotSyncException("Contact's email adderss is on hold in CiviCRM; refusing to resubscribe at Mailchimp.");
             }
-            $mailchimp_updates['status'] = 'subscribed';
+            // @see https://github.com/artfulrobot/mailchimpsync/issues/10
+            // Before we set the status to subscribed, we have to check if
+            // there are any unsubmitted updates setting the subscription to
+            // 'pending'. If so we need to load that update and abort it.
+            $existing_update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+            $existing_update->mailchimpsync_cache_id = $cache_entry->id;
+            $existing_update->mailchimpsync_batch_id = 'null';
+            $existing_update->orderBy('id'); // Process older first, this way we prefer newer details.
+
+            $require_pending_status = FALSE;
+            if ($existing_update->find()) {
+              $updates_to_abort = $existing_update->fetchMap('id', 'id');
+              foreach ($updates_to_abort as $update_id) {
+                $existing_update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+                $existing_update->id = $update_id;
+                $existing_update->find(TRUE);
+
+                // Merge any data from the old update not yet present in our update.
+                $old_update = json_decode($existing_update->data, TRUE);
+                $mailchimp_updates = array_merge($old_update, $mailchimp_updates);
+                // Check 'status' value
+                $require_pending_status |= (($old_update['status'] ?? '') === 'pending');
+                // Abort old update.
+                $existing_update->completed = 1;
+                $existing_update->error_response = 'Update aborted as superseded by another update before this was submitted.';
+                $existing_update->save();
+              }
+            }
+            // Force status.
+            $mailchimp_updates['status'] = $require_pending_status ? 'pending' : 'subscribed';
             return TRUE;
             break;
 
