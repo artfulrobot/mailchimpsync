@@ -1402,14 +1402,41 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
    * we can retry to set them 'pending' which causes Mailchimp itself to send
    * them an email asking if they want to join the list.
    *
+   * This test creates a 'subscribe' update, and then feeds a compliance
+   * failure into the handleMailchimpUpdatesResponse method.
+   *
+   * It then checks that
+   * - the original update is marked completed, with error
+   * - a new, not-completed update is created with 'pending'
+   * - the cache item is still 'live'
+   *
    */
   public function testBatchWebhookHandlesComplianceFailures() {
+    // Create contact1, config, pending batch trying to subscribe contact1
     $various = $this->batchWebhookSetup();
     $cache = $various->cache_entry;
+    $audience = $various->audience;
+    $original_update_id = $various->update_id;
 
-    //Load the update.
+    // Mock get for this contact. Mailchimp thinks they unsubscribed a week ago.
+    $api = $audience->getMailchimpApi();
+    $api->setMockMailchimpData([
+      'list_1' => [
+        'members' => [
+          [ 'fname' => 'Wilma', 'lname' => 'Flintstone', 'email' => 'contact1@example.com', 'status' => 'unsubscribed', 'last_changed' => $this->a_week_ago ],
+        ],
+      ],
+    ]);
+    // Merge this data in.
+    $cache->mailchimp_email = 'contact1@example.com';
+    $cache->mailchimp_status = 'unsubscribed';
+    $cache->mailchimp_updated = $this->a_week_ago;
+    $cache->mailchimp_member_id = $api->getMailchimpMemberIdFromEmail($cache->mailchimp_email);
+    $cache->save();
+
+    // Load the update.
     $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
-    $update->id = $various->update_id;
+    $update->id = $original_update_id;
     $update->find(1);
 
     // Call the thing we want to test:
@@ -1429,14 +1456,17 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $update->mailchimpsync_cache_id = $various->cache_entry->id;
     $this->assertEquals(2, $update->find());
     while ($update->fetch()) {
-      if ($update->id == $various->update_id) {
+      if ($update->id == $original_update_id) {
         $this->assertEquals(1, $update->completed);
         $this->assertEquals($returned_error, json_decode($update->error_response, TRUE));
       }
       else {
+        // This should be the new 'pending' update.
         $this->assertEquals(0, $update->completed);
         $data = json_decode($update->data, TRUE);
         $this->assertEquals('pending', $data['status'] ?? '');
+        // Store this update ID for later use.
+        $pending_update_id = $update->id;
       }
     }
 
@@ -1446,7 +1476,54 @@ class CRM_Mailchimpsync_SyncTest extends \PHPUnit\Framework\TestCase implements 
     $this->assertEquals(1, $cache->find(1));
     $this->assertEquals('live', $cache->sync_status);
 
-    //$this->dumpTables();
+    // --------------------------------------------------------------
+    // By this point we've tested that our response to compliance failure
+    // is to create another update, setting 'status: pending'. This will be
+    // submitted with the next sync run. But subsequent sync runs should
+    // not try to resubmit a pending one.
+    // --------------------------------------------------------------
+    $this->dumpTables();
+
+    // Now do the next sync.
+    $audience->syncSingle('contact1@example.com');
+
+    // Check the updates.
+    $update = new CRM_Mailchimpsync_BAO_MailchimpsyncUpdate();
+    $update->mailchimpsync_cache_id = $cache->id;
+    $this->dumpTables();
+    // There should now be three updates.
+    $this->assertEquals(3, $update->find());
+    while ($update->fetch()) {
+
+      if ($update->id == $original_update_id) {
+        // Check this is unchanged.
+        $this->assertEquals(1, $update->completed);
+        $this->assertEquals($returned_error, json_decode($update->error_response, TRUE));
+      }
+      elseif ($update->id == $pending_update_id) {
+        // The original pending update should have been aborted.
+        $this->assertEquals("Update aborted as superseded by another update before this was submitted.", $update->error_response);
+        // Should be marked completed.
+        $this->assertEquals(1, $update->completed);
+        // Data should not have changed.
+        $data = json_decode($update->data, TRUE);
+        $this->assertEquals('pending', $data['status'] ?? '');
+      }
+      else {
+        // The final update.
+        $this->assertEquals(0, $update->completed);
+        // Data should be 'pending'
+        $data = json_decode($update->data, TRUE);
+        $this->assertEquals('pending', $data['status'] ?? '');
+      }
+    }
+
+    // Reload the cache item, check it's still 'live'
+    $cache = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
+    $cache->id = $various->cache_entry->id;
+    $this->assertEquals(1, $cache->find(1));
+    $this->assertEquals('live', $cache->sync_status);
+
   }
   /**
    * If we try to subscribe someone and get an error not about compliance,

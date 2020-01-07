@@ -110,6 +110,10 @@ trait CRM_Mailchimpsync_FixturesTrait {
   /**
    * DRY code
    *
+   * - Creates a mock batch with one update, subscribing contact1
+   * - Sets contact1's cache status to live.
+   * - Mocks a successful batch webhook response saying the updates all went OK.
+   *
    * @return StdClass with props:
    * - audience
    * - cache_entry
