@@ -130,17 +130,22 @@ function civicrm_api3_mailchimpsync_cache_get($params) {
             }
             $update_row['status'] = 'error';
           }
+          if (!empty($fail->errors)) {
+            // field based errors.
+            $update_row['error'] .= "\n" . json_encode($fail->errors);
+          }
           $row['updates'][] = $update_row;
         }
 
+        // General errors - reasons why the sync status is fail.
         if ($row['sync_status'] === 'fail') {
           if ($row['mailchimp_status'] === 'cleaned') {
             // We can explain this one.
-            $row['errors'] = '"Cleaned" contacts cannot be resubscribed.';
+            $row['errors'] = E::ts('"Cleaned" contacts cannot be resubscribed.');
           }
           else {
             // Set up default message.
-            $row['errors'] = 'Unknown error.';
+            $row['errors'] = 'Mailchimp update error.';
 
             // Are there other rows held back by other emails owned by this contact?
             $other_emails = new CRM_Mailchimpsync_BAO_MailchimpsyncCache();
